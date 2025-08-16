@@ -1,0 +1,39 @@
+{
+  "title": "MySQL Monitor",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to MySQL Server",
+        "description": "Enter your MySQL server connection details",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "use_ssl": "Use SSL",
+          "ssl_ca": "SSL CA Certificate Path",
+          "ssl_verify": "Verify SSL Certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to MySQL server. Please check your credentials and network settings."
+    },
+    "abort": {
+      "already_configured": "This MySQL server is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MySQL Monitor Options",
+        "description": "Configure monitoring options",
+        "data": {
+          "include_dbs": "Include databases (comma-separated, leave empty for all)",
+          "exclude_dbs": "Exclude databases (comma-separated)",
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  }
+}

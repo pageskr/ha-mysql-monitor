@@ -1,0 +1,39 @@
+{
+  "title": "MySQL 모니터",
+  "config": {
+    "step": {
+      "user": {
+        "title": "MySQL 서버 연결",
+        "description": "MySQL 서버 연결 정보를 입력하세요",
+        "data": {
+          "host": "호스트",
+          "port": "포트",
+          "username": "사용자명",
+          "password": "비밀번호",
+          "use_ssl": "SSL 사용",
+          "ssl_ca": "SSL CA 인증서 경로",
+          "ssl_verify": "SSL 인증서 검증"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "MySQL 서버에 연결할 수 없습니다. 인증 정보와 네트워크 설정을 확인하세요."
+    },
+    "abort": {
+      "already_configured": "이 MySQL 서버는 이미 설정되어 있습니다"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MySQL 모니터 옵션",
+        "description": "모니터링 옵션 설정",
+        "data": {
+          "include_dbs": "포함할 데이터베이스 (쉼표로 구분, 비워두면 전체)",
+          "exclude_dbs": "제외할 데이터베이스 (쉼표로 구분)",
+          "scan_interval": "업데이트 주기 (초)"
+        }
+      }
+    }
+  }
+}

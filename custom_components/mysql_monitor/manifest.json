@@ -1,0 +1,12 @@
+{
+  "domain": "mysql_monitor",
+  "name": "MySQL Monitor",
+  "codeowners": ["@pageskr"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/pageskr/ha-mysql-monitor",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/pageskr/ha-mysql-monitor/issues",
+  "requirements": ["pymysql==1.1.0", "psutil==5.9.5"],
+  "version": "1.0.0"
+}
