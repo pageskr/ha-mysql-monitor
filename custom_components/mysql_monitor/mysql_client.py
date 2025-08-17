@@ -54,6 +54,7 @@ class MySQLClient:
                 charset="utf8mb4",
                 cursorclass=pymysql.cursors.DictCursor,
                 ssl=ssl_config,
+                autocommit=True,
             )
         
         return self._connection
@@ -86,24 +87,21 @@ class MySQLClient:
             hostname = cursor.fetchone()["hostname"]
             
             cursor.execute("SHOW VARIABLES LIKE 'datadir'")
-            datadir = cursor.fetchone()["Value"]
+            datadir_result = cursor.fetchone()
+            datadir = datadir_result["Value"] if datadir_result else None
             
-            cursor.execute("SELECT NOW() as current_time")
-            current_time = cursor.fetchone()["current_time"]
+            cursor.execute("SELECT NOW() as server_time")
+            server_time = cursor.fetchone()["server_time"]
             
-            cursor.execute("SHOW VARIABLES LIKE 'uptime'")
+            cursor.execute("SHOW STATUS LIKE 'Uptime'")
             uptime_result = cursor.fetchone()
-            if uptime_result:
-                uptime = int(uptime_result["Value"])
-            else:
-                cursor.execute("SHOW STATUS LIKE 'Uptime'")
-                uptime = int(cursor.fetchone()["Value"])
+            uptime = int(uptime_result["Value"]) if uptime_result else 0
             
             return {
                 "version": version,
                 "hostname": hostname,
                 "datadir": datadir,
-                "current_time": current_time,
+                "current_time": server_time,
                 "uptime": uptime,
             }
     
@@ -124,64 +122,72 @@ class MySQLClient:
     def get_innodb_status(self) -> Dict[str, Any]:
         """Get and parse InnoDB engine status."""
         conn = self._get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("SHOW ENGINE INNODB STATUS")
-            status_text = cursor.fetchone()["Status"]
-            
-            # Parse InnoDB status
-            parsed = {}
-            
-            # History list length
-            match = re.search(r"History list length (\d+)", status_text)
-            if match:
-                parsed["history_list_length"] = int(match.group(1))
-            
-            # Pending reads/writes
-            match = re.search(r"Pending flushes \(fsync\) log: (\d+)", status_text)
-            if match:
-                parsed["pending_log_flushes"] = int(match.group(1))
-            
-            # Checkpoint info
-            match = re.search(r"Log sequence number\s+(\d+)", status_text)
-            if match:
-                parsed["log_sequence_number"] = int(match.group(1))
-            
-            match = re.search(r"Log flushed up to\s+(\d+)", status_text)
-            if match:
-                parsed["log_flushed_up_to"] = int(match.group(1))
-            
-            match = re.search(r"Last checkpoint at\s+(\d+)", status_text)
-            if match:
-                parsed["last_checkpoint_at"] = int(match.group(1))
-            
-            # Pending I/O
-            match = re.search(r"Pending normal aio reads: (\d+)", status_text)
-            if match:
-                parsed["pending_aio_reads"] = int(match.group(1))
-            
-            match = re.search(r"Pending normal aio writes: (\d+)", status_text)
-            if match:
-                parsed["pending_aio_writes"] = int(match.group(1))
-            
-            # Mutex info
-            match = re.search(r"Mutex spin waits (\d+)", status_text)
-            if match:
-                parsed["mutex_spin_waits"] = int(match.group(1))
-            
-            match = re.search(r"Mutex spin rounds (\d+)", status_text)
-            if match:
-                parsed["mutex_spin_rounds"] = int(match.group(1))
-            
-            # Transaction info
-            match = re.search(r"Trx id counter (\d+)", status_text)
-            if match:
-                parsed["transaction_id_counter"] = int(match.group(1))
-            
-            # Deadlocks
-            match = re.search(r"LATEST DETECTED DEADLOCK", status_text)
-            parsed["has_recent_deadlock"] = bool(match)
-            
-            return parsed
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SHOW ENGINE INNODB STATUS")
+                result = cursor.fetchone()
+                if not result or "Status" not in result:
+                    return {}
+                
+                status_text = result["Status"]
+                
+                # Parse InnoDB status
+                parsed = {}
+                
+                # History list length
+                match = re.search(r"History list length (\d+)", status_text)
+                if match:
+                    parsed["history_list_length"] = int(match.group(1))
+                
+                # Pending reads/writes
+                match = re.search(r"Pending flushes \(fsync\) log: (\d+)", status_text)
+                if match:
+                    parsed["pending_log_flushes"] = int(match.group(1))
+                
+                # Checkpoint info
+                match = re.search(r"Log sequence number\s+(\d+)", status_text)
+                if match:
+                    parsed["log_sequence_number"] = int(match.group(1))
+                
+                match = re.search(r"Log flushed up to\s+(\d+)", status_text)
+                if match:
+                    parsed["log_flushed_up_to"] = int(match.group(1))
+                
+                match = re.search(r"Last checkpoint at\s+(\d+)", status_text)
+                if match:
+                    parsed["last_checkpoint_at"] = int(match.group(1))
+                
+                # Pending I/O
+                match = re.search(r"Pending normal aio reads: (\d+)", status_text)
+                if match:
+                    parsed["pending_aio_reads"] = int(match.group(1))
+                
+                match = re.search(r"Pending normal aio writes: (\d+)", status_text)
+                if match:
+                    parsed["pending_aio_writes"] = int(match.group(1))
+                
+                # Mutex info
+                match = re.search(r"Mutex spin waits (\d+)", status_text)
+                if match:
+                    parsed["mutex_spin_waits"] = int(match.group(1))
+                
+                match = re.search(r"Mutex spin rounds (\d+)", status_text)
+                if match:
+                    parsed["mutex_spin_rounds"] = int(match.group(1))
+                
+                # Transaction info
+                match = re.search(r"Trx id counter (\d+)", status_text)
+                if match:
+                    parsed["transaction_id_counter"] = int(match.group(1))
+                
+                # Deadlocks
+                match = re.search(r"LATEST DETECTED DEADLOCK", status_text)
+                parsed["has_recent_deadlock"] = bool(match)
+                
+                return parsed
+        except Exception as err:
+            _LOGGER.warning("Failed to get InnoDB status: %s", err)
+            return {}
     
     def get_performance_data(self) -> Dict[str, Any]:
         """Get performance schema data if available."""
@@ -191,79 +197,90 @@ class MySQLClient:
         try:
             with conn.cursor() as cursor:
                 # Check if performance_schema is enabled
-                cursor.execute("""
-                    SELECT VARIABLE_VALUE 
-                    FROM performance_schema.global_variables 
-                    WHERE VARIABLE_NAME = 'performance_schema'
-                """)
+                cursor.execute("SHOW VARIABLES LIKE 'performance_schema'")
                 result = cursor.fetchone()
-                if not result or result["VARIABLE_VALUE"] != "ON":
+                if not result or result["Value"] != "ON":
                     return {"enabled": False}
                 
                 data["enabled"] = True
                 
                 # Statement summary
-                cursor.execute("""
-                    SELECT 
-                        DIGEST_TEXT,
-                        COUNT_STAR,
-                        SUM_TIMER_WAIT,
-                        SUM_LOCK_TIME,
-                        SUM_ROWS_AFFECTED,
-                        SUM_ROWS_SENT,
-                        SUM_ROWS_EXAMINED
-                    FROM performance_schema.events_statements_summary_by_digest
-                    ORDER BY SUM_TIMER_WAIT DESC
-                    LIMIT 10
-                """)
-                data["top_statements"] = cursor.fetchall()
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            DIGEST_TEXT,
+                            COUNT_STAR,
+                            SUM_TIMER_WAIT,
+                            SUM_LOCK_TIME,
+                            SUM_ROWS_AFFECTED,
+                            SUM_ROWS_SENT,
+                            SUM_ROWS_EXAMINED
+                        FROM performance_schema.events_statements_summary_by_digest
+                        WHERE DIGEST_TEXT IS NOT NULL
+                        ORDER BY SUM_TIMER_WAIT DESC
+                        LIMIT 10
+                    """)
+                    data["top_statements"] = cursor.fetchall()
+                except Exception:
+                    data["top_statements"] = []
                 
                 # Table I/O summary
-                cursor.execute("""
-                    SELECT 
-                        OBJECT_SCHEMA,
-                        OBJECT_NAME,
-                        COUNT_STAR,
-                        SUM_TIMER_WAIT,
-                        COUNT_READ,
-                        COUNT_WRITE,
-                        COUNT_FETCH,
-                        COUNT_INSERT,
-                        COUNT_UPDATE,
-                        COUNT_DELETE
-                    FROM performance_schema.table_io_waits_summary_by_table
-                    WHERE OBJECT_SCHEMA NOT IN %s
-                    ORDER BY SUM_TIMER_WAIT DESC
-                    LIMIT 10
-                """, (SYSTEM_DATABASES,))
-                data["table_io_summary"] = cursor.fetchall()
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            OBJECT_SCHEMA,
+                            OBJECT_NAME,
+                            COUNT_STAR,
+                            SUM_TIMER_WAIT,
+                            COUNT_READ,
+                            COUNT_WRITE,
+                            COUNT_FETCH,
+                            COUNT_INSERT,
+                            COUNT_UPDATE,
+                            COUNT_DELETE
+                        FROM performance_schema.table_io_waits_summary_by_table
+                        WHERE OBJECT_SCHEMA NOT IN %s
+                            AND OBJECT_SCHEMA IS NOT NULL
+                        ORDER BY SUM_TIMER_WAIT DESC
+                        LIMIT 10
+                    """, (SYSTEM_DATABASES,))
+                    data["table_io_summary"] = cursor.fetchall()
+                except Exception:
+                    data["table_io_summary"] = []
                 
                 # File I/O summary
-                cursor.execute("""
-                    SELECT 
-                        FILE_NAME,
-                        COUNT_STAR,
-                        SUM_TIMER_WAIT,
-                        COUNT_READ,
-                        COUNT_WRITE,
-                        SUM_NUMBER_OF_BYTES_READ,
-                        SUM_NUMBER_OF_BYTES_WRITE
-                    FROM performance_schema.file_summary_by_instance
-                    ORDER BY SUM_TIMER_WAIT DESC
-                    LIMIT 10
-                """)
-                data["file_io_summary"] = cursor.fetchall()
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            FILE_NAME,
+                            COUNT_STAR,
+                            SUM_TIMER_WAIT,
+                            COUNT_READ,
+                            COUNT_WRITE,
+                            SUM_NUMBER_OF_BYTES_READ,
+                            SUM_NUMBER_OF_BYTES_WRITE
+                        FROM performance_schema.file_summary_by_instance
+                        WHERE FILE_NAME IS NOT NULL
+                        ORDER BY SUM_TIMER_WAIT DESC
+                        LIMIT 10
+                    """)
+                    data["file_io_summary"] = cursor.fetchall()
+                except Exception:
+                    data["file_io_summary"] = []
                 
                 # User summary
-                cursor.execute("""
-                    SELECT 
-                        USER,
-                        CURRENT_CONNECTIONS,
-                        TOTAL_CONNECTIONS
-                    FROM performance_schema.users
-                    WHERE USER IS NOT NULL
-                """)
-                data["user_summary"] = cursor.fetchall()
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            USER,
+                            CURRENT_CONNECTIONS,
+                            TOTAL_CONNECTIONS
+                        FROM performance_schema.users
+                        WHERE USER IS NOT NULL
+                    """)
+                    data["user_summary"] = cursor.fetchall()
+                except Exception:
+                    data["user_summary"] = []
                 
         except Exception as err:
             _LOGGER.warning("Failed to get performance schema data: %s", err)
@@ -275,23 +292,27 @@ class MySQLClient:
     def get_process_list(self) -> List[Dict[str, Any]]:
         """Get current process list."""
         conn = self._get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    ID,
-                    USER,
-                    HOST,
-                    DB,
-                    COMMAND,
-                    TIME,
-                    STATE,
-                    INFO
-                FROM INFORMATION_SCHEMA.PROCESSLIST
-                WHERE COMMAND != 'Sleep'
-                ORDER BY TIME DESC
-                LIMIT 20
-            """)
-            return cursor.fetchall()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        ID,
+                        USER,
+                        HOST,
+                        DB,
+                        COMMAND,
+                        TIME,
+                        STATE,
+                        INFO
+                    FROM INFORMATION_SCHEMA.PROCESSLIST
+                    WHERE COMMAND != 'Sleep'
+                    ORDER BY TIME DESC
+                    LIMIT 20
+                """)
+                return cursor.fetchall()
+        except Exception as err:
+            _LOGGER.warning("Failed to get process list: %s", err)
+            return []
     
     def get_replication_status(self) -> Dict[str, Any]:
         """Get replication status."""
@@ -301,27 +322,33 @@ class MySQLClient:
         try:
             with conn.cursor() as cursor:
                 # Master status
-                cursor.execute("SHOW MASTER STATUS")
-                master = cursor.fetchone()
-                if master:
-                    data["master"] = master
+                try:
+                    cursor.execute("SHOW MASTER STATUS")
+                    master = cursor.fetchone()
+                    if master:
+                        data["master"] = master
+                except Exception:
+                    pass
                 
                 # Slave status
-                cursor.execute("SHOW SLAVE STATUS")
-                slave = cursor.fetchone()
-                if slave:
-                    data["slave"] = {
-                        "Slave_IO_State": slave.get("Slave_IO_State"),
-                        "Master_Host": slave.get("Master_Host"),
-                        "Master_Port": slave.get("Master_Port"),
-                        "Slave_IO_Running": slave.get("Slave_IO_Running"),
-                        "Slave_SQL_Running": slave.get("Slave_SQL_Running"),
-                        "Seconds_Behind_Master": slave.get("Seconds_Behind_Master"),
-                        "Last_IO_Error": slave.get("Last_IO_Error"),
-                        "Last_SQL_Error": slave.get("Last_SQL_Error"),
-                        "Exec_Master_Log_Pos": slave.get("Exec_Master_Log_Pos"),
-                        "Relay_Log_Pos": slave.get("Relay_Log_Pos"),
-                    }
+                try:
+                    cursor.execute("SHOW SLAVE STATUS")
+                    slave = cursor.fetchone()
+                    if slave:
+                        data["slave"] = {
+                            "Slave_IO_State": slave.get("Slave_IO_State"),
+                            "Master_Host": slave.get("Master_Host"),
+                            "Master_Port": slave.get("Master_Port"),
+                            "Slave_IO_Running": slave.get("Slave_IO_Running"),
+                            "Slave_SQL_Running": slave.get("Slave_SQL_Running"),
+                            "Seconds_Behind_Master": slave.get("Seconds_Behind_Master"),
+                            "Last_IO_Error": slave.get("Last_IO_Error"),
+                            "Last_SQL_Error": slave.get("Last_SQL_Error"),
+                            "Exec_Master_Log_Pos": slave.get("Exec_Master_Log_Pos"),
+                            "Relay_Log_Pos": slave.get("Relay_Log_Pos"),
+                        }
+                except Exception:
+                    pass
         except Exception as err:
             _LOGGER.debug("No replication configured: %s", err)
         
@@ -331,64 +358,69 @@ class MySQLClient:
         """Get system resource usage of MySQL server."""
         data = {}
         
-        # Get overall system stats
-        data["cpu_percent"] = psutil.cpu_percent(interval=1)
-        data["cpu_count"] = psutil.cpu_count()
-        
-        memory = psutil.virtual_memory()
-        data["memory_total"] = memory.total
-        data["memory_used"] = memory.used
-        data["memory_available"] = memory.available
-        data["memory_percent"] = memory.percent
-        
-        # Try to get MySQL process specific stats
         try:
-            conn = self._get_connection()
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT @@pid_file")
-                pid_file = cursor.fetchone()
-                
-                if pid_file:
-                    # Try to read PID from file
+            # Get overall system stats
+            data["cpu_percent"] = psutil.cpu_percent(interval=1)
+            data["cpu_count"] = psutil.cpu_count()
+            
+            memory = psutil.virtual_memory()
+            data["memory_total"] = memory.total
+            data["memory_used"] = memory.used
+            data["memory_available"] = memory.available
+            data["memory_percent"] = memory.percent
+            
+            # Try to get MySQL process specific stats
+            try:
+                # Find MySQL process by connection
+                for proc in psutil.process_iter(['pid', 'name', 'connections']):
                     try:
-                        with open(pid_file["@@pid_file"], "r") as f:
-                            mysql_pid = int(f.read().strip())
-                        
-                        mysql_proc = psutil.Process(mysql_pid)
-                        
-                        # MySQL process specific stats
-                        data["mysql_cpu_percent"] = mysql_proc.cpu_percent(interval=0.1)
-                        data["mysql_memory_info"] = mysql_proc.memory_info()._asdict()
-                        data["mysql_memory_percent"] = mysql_proc.memory_percent()
-                        data["mysql_num_threads"] = mysql_proc.num_threads()
-                        data["mysql_connections"] = len(mysql_proc.connections())
-                        
-                        # I/O counters
-                        io_counters = mysql_proc.io_counters()
-                        data["mysql_io_read_count"] = io_counters.read_count
-                        data["mysql_io_write_count"] = io_counters.write_count
-                        data["mysql_io_read_bytes"] = io_counters.read_bytes
-                        data["mysql_io_write_bytes"] = io_counters.write_bytes
-                        
-                    except Exception as err:
-                        _LOGGER.debug("Could not get MySQL process stats: %s", err)
-        except Exception as err:
-            _LOGGER.debug("Could not determine MySQL PID: %s", err)
+                        if 'mysql' in proc.info['name'].lower():
+                            connections = proc.connections()
+                            for conn in connections:
+                                if conn.status == 'LISTEN' and conn.laddr.port == self.port:
+                                    mysql_proc = proc
+                                    
+                                    # MySQL process specific stats
+                                    data["mysql_cpu_percent"] = mysql_proc.cpu_percent(interval=0.1)
+                                    data["mysql_memory_info"] = mysql_proc.memory_info()._asdict()
+                                    data["mysql_memory_percent"] = mysql_proc.memory_percent()
+                                    data["mysql_num_threads"] = mysql_proc.num_threads()
+                                    data["mysql_connections"] = len(mysql_proc.connections())
+                                    
+                                    # I/O counters
+                                    try:
+                                        io_counters = mysql_proc.io_counters()
+                                        data["mysql_io_read_count"] = io_counters.read_count
+                                        data["mysql_io_write_count"] = io_counters.write_count
+                                        data["mysql_io_read_bytes"] = io_counters.read_bytes
+                                        data["mysql_io_write_bytes"] = io_counters.write_bytes
+                                    except Exception:
+                                        pass
+                                    
+                                    break
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            except Exception as err:
+                _LOGGER.debug("Could not get MySQL process stats: %s", err)
+            
+            # Disk usage for data directory
+            try:
+                conn = self._get_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("SHOW VARIABLES LIKE 'datadir'")
+                    result = cursor.fetchone()
+                    if result:
+                        datadir = result["Value"]
+                        disk_usage = psutil.disk_usage(datadir)
+                        data["datadir_total"] = disk_usage.total
+                        data["datadir_used"] = disk_usage.used
+                        data["datadir_free"] = disk_usage.free
+                        data["datadir_percent"] = disk_usage.percent
+            except Exception as err:
+                _LOGGER.debug("Could not get disk usage: %s", err)
         
-        # Disk usage for data directory
-        try:
-            conn = self._get_connection()
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT @@datadir")
-                datadir = cursor.fetchone()["@@datadir"]
-                
-                disk_usage = psutil.disk_usage(datadir)
-                data["datadir_total"] = disk_usage.total
-                data["datadir_used"] = disk_usage.used
-                data["datadir_free"] = disk_usage.free
-                data["datadir_percent"] = disk_usage.percent
         except Exception as err:
-            _LOGGER.debug("Could not get disk usage: %s", err)
+            _LOGGER.error("Failed to get system resources: %s", err)
         
         return data
     
@@ -405,12 +437,12 @@ class MySQLClient:
             params = [SYSTEM_DATABASES]
             
             if include_dbs:
-                where_clauses.append("table_schema IN %s")
-                params.append(include_dbs)
-            
-            if exclude_dbs:
-                where_clauses.append("table_schema NOT IN %s")
-                params.append(exclude_dbs)
+                where_clauses = ["table_schema IN %s"]
+                params = [include_dbs]
+            elif exclude_dbs:
+                # Combine system DBs and excluded DBs
+                excluded = list(SYSTEM_DATABASES) + exclude_dbs
+                params = [excluded]
             
             where_clause = " AND ".join(where_clauses)
             
@@ -431,7 +463,7 @@ class MySQLClient:
             databases = {}
             for row in cursor.fetchall():
                 databases[row["db_name"]] = {
-                    "table_count": row["table_count"],
+                    "table_count": row["table_count"] or 0,
                     "total_rows": row["total_rows"] or 0,
                     "data_size": row["data_size"] or 0,
                     "index_size": row["index_size"] or 0,
@@ -457,70 +489,80 @@ class MySQLClient:
             params = [SYSTEM_DATABASES]
             
             if include_dbs:
-                where_clauses.append("table_schema IN %s")
-                params.append(include_dbs)
-            
-            if exclude_dbs:
-                where_clauses.append("table_schema NOT IN %s")
-                params.append(exclude_dbs)
+                where_clauses = ["table_schema IN %s"]
+                params = [include_dbs]
+            elif exclude_dbs:
+                excluded = list(SYSTEM_DATABASES) + exclude_dbs
+                params = [excluded]
             
             where_clause = " AND ".join(where_clauses)
             
-            # Largest tables by size
-            cursor.execute(f"""
-                SELECT 
-                    table_schema,
-                    table_name,
-                    table_rows,
-                    data_length,
-                    index_length,
-                    data_length + index_length as total_size,
-                    data_free
-                FROM information_schema.tables
-                WHERE {where_clause}
-                ORDER BY total_size DESC
-                LIMIT %s
-            """, params + [limit])
-            data["largest_tables"] = cursor.fetchall()
+            try:
+                # Largest tables by size
+                cursor.execute(f"""
+                    SELECT 
+                        table_schema,
+                        table_name,
+                        table_rows,
+                        data_length,
+                        index_length,
+                        data_length + index_length as total_size,
+                        data_free
+                    FROM information_schema.tables
+                    WHERE {where_clause}
+                        AND table_type = 'BASE TABLE'
+                    ORDER BY (data_length + index_length) DESC
+                    LIMIT %s
+                """, params + [limit])
+                data["largest_tables"] = cursor.fetchall()
+            except Exception:
+                data["largest_tables"] = []
             
-            # Most fragmented tables
-            cursor.execute(f"""
-                SELECT 
-                    table_schema,
-                    table_name,
-                    data_free,
-                    data_length + index_length as total_size,
-                    ROUND((data_free / (data_length + index_length + 1)) * 100, 2) as fragmentation_pct
-                FROM information_schema.tables
-                WHERE {where_clause} 
-                    AND data_free > 0 
-                    AND data_length + index_length > 0
-                ORDER BY data_free DESC
-                LIMIT %s
-            """, params + [limit])
-            data["fragmented_tables"] = cursor.fetchall()
+            try:
+                # Most fragmented tables
+                cursor.execute(f"""
+                    SELECT 
+                        table_schema,
+                        table_name,
+                        data_free,
+                        data_length + index_length as total_size,
+                        ROUND((data_free / (data_length + index_length + 1)) * 100, 2) as fragmentation_pct
+                    FROM information_schema.tables
+                    WHERE {where_clause} 
+                        AND data_free > 0 
+                        AND data_length + index_length > 0
+                        AND table_type = 'BASE TABLE'
+                    ORDER BY data_free DESC
+                    LIMIT %s
+                """, params + [limit])
+                data["fragmented_tables"] = cursor.fetchall()
+            except Exception:
+                data["fragmented_tables"] = []
             
-            # Tables without primary key
-            cursor.execute(f"""
-                SELECT 
-                    t.table_schema,
-                    t.table_name,
-                    t.table_rows,
-                    t.data_length + t.index_length as total_size
-                FROM information_schema.tables t
-                WHERE {where_clause}
-                    AND NOT EXISTS (
-                        SELECT 1 
-                        FROM information_schema.statistics s
-                        WHERE s.table_schema = t.table_schema 
-                            AND s.table_name = t.table_name
-                            AND s.index_name = 'PRIMARY'
-                    )
-                    AND t.table_type = 'BASE TABLE'
-                ORDER BY total_size DESC
-                LIMIT %s
-            """, params + [limit])
-            data["tables_without_pk"] = cursor.fetchall()
+            try:
+                # Tables without primary key
+                cursor.execute(f"""
+                    SELECT 
+                        t.table_schema,
+                        t.table_name,
+                        t.table_rows,
+                        t.data_length + t.index_length as total_size
+                    FROM information_schema.tables t
+                    WHERE {where_clause}
+                        AND NOT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.statistics s
+                            WHERE s.table_schema = t.table_schema 
+                                AND s.table_name = t.table_name
+                                AND s.index_name = 'PRIMARY'
+                        )
+                        AND t.table_type = 'BASE TABLE'
+                    ORDER BY (t.data_length + t.index_length) DESC
+                    LIMIT %s
+                """, params + [limit])
+                data["tables_without_pk"] = cursor.fetchall()
+            except Exception:
+                data["tables_without_pk"] = []
             
         return data
     
@@ -587,14 +629,14 @@ class MySQLClient:
                 
                 data["log_files"] = logs
                 data["log_count"] = len(logs)
-                data["total_size"] = sum(log["File_size"] for log in logs)
+                data["total_size"] = sum(log.get("File_size", 0) for log in logs)
                 
                 # Get current log file
                 cursor.execute("SHOW MASTER STATUS")
                 master_status = cursor.fetchone()
                 if master_status:
-                    data["current_log"] = master_status["File"]
-                    data["current_position"] = master_status["Position"]
+                    data["current_log"] = master_status.get("File")
+                    data["current_position"] = master_status.get("Position")
                 
                 # Get binlog format
                 cursor.execute("SHOW VARIABLES LIKE 'binlog_format'")
@@ -630,10 +672,10 @@ class MySQLClient:
             max_used = cursor.fetchone()
             
             return {
-                "total_connections": pool_stats["total_connections"],
-                "idle_connections": pool_stats["idle_connections"],
-                "active_connections": pool_stats["active_connections"],
-                "max_connection_time": pool_stats["max_connection_time"],
+                "total_connections": pool_stats["total_connections"] or 0,
+                "idle_connections": pool_stats["idle_connections"] or 0,
+                "active_connections": pool_stats["active_connections"] or 0,
+                "max_connection_time": pool_stats["max_connection_time"] or 0,
                 "avg_connection_time": float(pool_stats["avg_connection_time"] or 0),
                 "max_connections": int(max_conn["Value"]) if max_conn else 0,
                 "max_used_connections": int(max_used["Value"]) if max_used else 0,
@@ -689,14 +731,14 @@ class MySQLClient:
                         SUM_ROWS_SENT
                     FROM performance_schema.events_statements_summary_by_digest
                     WHERE AVG_TIMER_WAIT > %s * 1000000000
+                        AND DIGEST_TEXT IS NOT NULL
                     ORDER BY SUM_TIMER_WAIT DESC
                     LIMIT 10
                 """, (float(data.get("long_query_time", 10)),))
                 
                 data["top_slow_queries"] = cursor.fetchall()
             except Exception:
-                # Performance schema might not be available
-                pass
+                data["top_slow_queries"] = []
         
         return data
     
@@ -705,166 +747,225 @@ class MySQLClient:
         conn = self._get_connection()
         data = {}
         
-        with conn.cursor() as cursor:
-            # InnoDB lock waits
-            cursor.execute("""
-                SELECT 
-                    waiting_trx_id,
-                    waiting_pid,
-                    waiting_query,
-                    blocking_trx_id,
-                    blocking_pid,
-                    blocking_query,
-                    wait_started,
-                    wait_age_secs,
-                    locked_table,
-                    locked_index
-                FROM sys.innodb_lock_waits
-                LIMIT 10
-            """)
-            data["current_lock_waits"] = cursor.fetchall()
-            
-            # Lock wait timeout setting
-            cursor.execute("SHOW VARIABLES LIKE 'innodb_lock_wait_timeout'")
-            timeout = cursor.fetchone()
-            data["lock_wait_timeout"] = int(timeout["Value"]) if timeout else 50
-            
-            # Historical lock wait stats
-            cursor.execute("""
-                SHOW STATUS WHERE Variable_name IN (
-                    'Innodb_row_lock_waits',
-                    'Innodb_row_lock_time',
-                    'Innodb_row_lock_time_avg',
-                    'Innodb_row_lock_time_max',
-                    'Table_locks_waited'
-                )
-            """)
-            
-            for row in cursor.fetchall():
-                data[row["Variable_name"]] = int(row["Value"])
+        try:
+            with conn.cursor() as cursor:
+                # InnoDB lock waits - check if sys schema exists
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            waiting_trx_id,
+                            waiting_pid,
+                            waiting_query,
+                            blocking_trx_id,
+                            blocking_pid,
+                            blocking_query,
+                            wait_started,
+                            wait_age_secs,
+                            locked_table,
+                            locked_index
+                        FROM sys.innodb_lock_waits
+                        LIMIT 10
+                    """)
+                    data["current_lock_waits"] = cursor.fetchall()
+                except Exception:
+                    # Try alternative method
+                    cursor.execute("""
+                        SELECT 
+                            r.trx_id AS waiting_trx_id,
+                            r.trx_mysql_thread_id AS waiting_pid,
+                            r.trx_query AS waiting_query,
+                            b.trx_id AS blocking_trx_id,
+                            b.trx_mysql_thread_id AS blocking_pid,
+                            b.trx_query AS blocking_query,
+                            r.trx_wait_started AS wait_started
+                        FROM information_schema.innodb_lock_waits w
+                        JOIN information_schema.innodb_trx r ON w.requesting_trx_id = r.trx_id
+                        JOIN information_schema.innodb_trx b ON w.blocking_trx_id = b.trx_id
+                        LIMIT 10
+                    """)
+                    data["current_lock_waits"] = cursor.fetchall()
+                
+                # Lock wait timeout setting
+                cursor.execute("SHOW VARIABLES LIKE 'innodb_lock_wait_timeout'")
+                timeout = cursor.fetchone()
+                data["lock_wait_timeout"] = int(timeout["Value"]) if timeout else 50
+                
+                # Historical lock wait stats
+                cursor.execute("""
+                    SHOW STATUS WHERE Variable_name IN (
+                        'Innodb_row_lock_waits',
+                        'Innodb_row_lock_time',
+                        'Innodb_row_lock_time_avg',
+                        'Innodb_row_lock_time_max',
+                        'Table_locks_waited'
+                    )
+                """)
+                
+                for row in cursor.fetchall():
+                    data[row["Variable_name"]] = int(row["Value"])
+        except Exception as err:
+            _LOGGER.debug("Could not get lock wait stats: %s", err)
+            data["current_lock_waits"] = []
         
         return data
     
     def get_buffer_pool_stats(self) -> Dict[str, Any]:
         """Get InnoDB buffer pool statistics."""
         conn = self._get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    POOL_ID,
-                    POOL_SIZE,
-                    FREE_BUFFERS,
-                    DATABASE_PAGES,
-                    OLD_DATABASE_PAGES,
-                    MODIFIED_DATABASE_PAGES,
-                    PENDING_DECOMPRESS,
-                    PENDING_READS,
-                    PENDING_FLUSH_LRU,
-                    PENDING_FLUSH_LIST,
-                    PAGES_MADE_YOUNG,
-                    PAGES_NOT_MADE_YOUNG,
-                    PAGES_MADE_YOUNG_RATE,
-                    PAGES_MADE_NOT_YOUNG_RATE,
-                    NUMBER_PAGES_READ,
-                    NUMBER_PAGES_CREATED,
-                    NUMBER_PAGES_WRITTEN,
-                    PAGES_READ_RATE,
-                    PAGES_CREATE_RATE,
-                    PAGES_WRITTEN_RATE,
-                    NUMBER_PAGES_GET,
-                    HIT_RATE,
-                    YOUNG_MAKE_PER_THOUSAND_GETS,
-                    NOT_YOUNG_MAKE_PER_THOUSAND_GETS,
-                    NUMBER_PAGES_READ_AHEAD,
-                    NUMBER_READ_AHEAD_EVICTED,
-                    READ_AHEAD_RATE,
-                    READ_AHEAD_EVICTED_RATE,
-                    LRU_IO_TOTAL,
-                    LRU_IO_CURRENT,
-                    UNCOMPRESS_TOTAL,
-                    UNCOMPRESS_CURRENT
-                FROM information_schema.INNODB_BUFFER_POOL_STATS
-            """)
-            
-            pools = cursor.fetchall()
-            
-            # Aggregate stats
-            total_stats = {
-                "pool_count": len(pools),
-                "total_size": sum(p["POOL_SIZE"] for p in pools),
-                "total_free": sum(p["FREE_BUFFERS"] for p in pools),
-                "total_database_pages": sum(p["DATABASE_PAGES"] for p in pools),
-                "total_dirty_pages": sum(p["MODIFIED_DATABASE_PAGES"] for p in pools),
-                "avg_hit_rate": sum(p["HIT_RATE"] for p in pools) / len(pools) if pools else 0,
-                "pools": pools
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        POOL_ID,
+                        POOL_SIZE,
+                        FREE_BUFFERS,
+                        DATABASE_PAGES,
+                        OLD_DATABASE_PAGES,
+                        MODIFIED_DATABASE_PAGES,
+                        PENDING_DECOMPRESS,
+                        PENDING_READS,
+                        PENDING_FLUSH_LRU,
+                        PENDING_FLUSH_LIST,
+                        PAGES_MADE_YOUNG,
+                        PAGES_NOT_MADE_YOUNG,
+                        PAGES_MADE_YOUNG_RATE,
+                        PAGES_MADE_NOT_YOUNG_RATE,
+                        NUMBER_PAGES_READ,
+                        NUMBER_PAGES_CREATED,
+                        NUMBER_PAGES_WRITTEN,
+                        PAGES_READ_RATE,
+                        PAGES_CREATE_RATE,
+                        PAGES_WRITTEN_RATE,
+                        NUMBER_PAGES_GET,
+                        HIT_RATE,
+                        YOUNG_MAKE_PER_THOUSAND_GETS,
+                        NOT_YOUNG_MAKE_PER_THOUSAND_GETS,
+                        NUMBER_PAGES_READ_AHEAD,
+                        NUMBER_READ_AHEAD_EVICTED,
+                        READ_AHEAD_RATE,
+                        READ_AHEAD_EVICTED_RATE,
+                        LRU_IO_TOTAL,
+                        LRU_IO_CURRENT,
+                        UNCOMPRESS_TOTAL,
+                        UNCOMPRESS_CURRENT
+                    FROM information_schema.INNODB_BUFFER_POOL_STATS
+                """)
+                
+                pools = cursor.fetchall()
+                
+                if not pools:
+                    return {
+                        "pool_count": 0,
+                        "total_size": 0,
+                        "total_free": 0,
+                        "total_database_pages": 0,
+                        "total_dirty_pages": 0,
+                        "avg_hit_rate": 0,
+                        "pools": []
+                    }
+                
+                # Aggregate stats
+                total_stats = {
+                    "pool_count": len(pools),
+                    "total_size": sum(p["POOL_SIZE"] or 0 for p in pools),
+                    "total_free": sum(p["FREE_BUFFERS"] or 0 for p in pools),
+                    "total_database_pages": sum(p["DATABASE_PAGES"] or 0 for p in pools),
+                    "total_dirty_pages": sum(p["MODIFIED_DATABASE_PAGES"] or 0 for p in pools),
+                    "avg_hit_rate": sum(p["HIT_RATE"] or 0 for p in pools) / len(pools) if pools else 0,
+                    "pools": pools
+                }
+                
+                # Calculate usage percentage
+                if total_stats["total_size"] > 0:
+                    total_stats["usage_pct"] = (
+                        (total_stats["total_size"] - total_stats["total_free"]) / 
+                        total_stats["total_size"]
+                    ) * 100
+                    total_stats["dirty_pct"] = (
+                        total_stats["total_dirty_pages"] / total_stats["total_size"]
+                    ) * 100
+                else:
+                    total_stats["usage_pct"] = 0
+                    total_stats["dirty_pct"] = 0
+                
+                return total_stats
+        except Exception as err:
+            _LOGGER.warning("Failed to get buffer pool stats: %s", err)
+            return {
+                "pool_count": 0,
+                "total_size": 0,
+                "total_free": 0,
+                "total_database_pages": 0,
+                "total_dirty_pages": 0,
+                "avg_hit_rate": 0,
+                "pools": []
             }
-            
-            # Calculate usage percentage
-            if total_stats["total_size"] > 0:
-                total_stats["usage_pct"] = (
-                    (total_stats["total_size"] - total_stats["total_free"]) / 
-                    total_stats["total_size"]
-                ) * 100
-                total_stats["dirty_pct"] = (
-                    total_stats["total_dirty_pages"] / total_stats["total_size"]
-                ) * 100
-            
-            return total_stats
     
     def get_transaction_info(self) -> Dict[str, Any]:
         """Get transaction information."""
         conn = self._get_connection()
         data = {}
         
-        with conn.cursor() as cursor:
-            # Active transactions
-            cursor.execute("""
-                SELECT 
-                    trx_id,
-                    trx_state,
-                    trx_started,
-                    trx_requested_lock_id,
-                    trx_wait_started,
-                    trx_weight,
-                    trx_mysql_thread_id,
-                    trx_query,
-                    trx_operation_state,
-                    trx_tables_in_use,
-                    trx_tables_locked,
-                    trx_rows_locked,
-                    trx_rows_modified
-                FROM information_schema.INNODB_TRX
-                ORDER BY trx_started
-            """)
-            
-            transactions = cursor.fetchall()
-            data["active_transactions"] = transactions
-            data["transaction_count"] = len(transactions)
-            
-            # Long running transactions
-            data["long_running_transactions"] = [
-                trx for trx in transactions
-                if trx["trx_started"] and 
-                (datetime.now() - trx["trx_started"]).total_seconds() > 60
-            ]
-            
-            # Transaction isolation level
-            cursor.execute("SELECT @@tx_isolation")
-            isolation = cursor.fetchone()
-            data["default_isolation_level"] = isolation["@@tx_isolation"]
-            
-            # Rollback segment info
-            cursor.execute("""
-                SHOW STATUS WHERE Variable_name IN (
-                    'Com_commit',
-                    'Com_rollback',
-                    'Com_rollback_to_savepoint',
-                    'Com_savepoint'
-                )
-            """)
-            
-            for row in cursor.fetchall():
-                data[row["Variable_name"]] = int(row["Value"])
+        try:
+            with conn.cursor() as cursor:
+                # Active transactions
+                cursor.execute("""
+                    SELECT 
+                        trx_id,
+                        trx_state,
+                        trx_started,
+                        trx_requested_lock_id,
+                        trx_wait_started,
+                        trx_weight,
+                        trx_mysql_thread_id,
+                        trx_query,
+                        trx_operation_state,
+                        trx_tables_in_use,
+                        trx_tables_locked,
+                        trx_rows_locked,
+                        trx_rows_modified
+                    FROM information_schema.INNODB_TRX
+                    ORDER BY trx_started
+                """)
+                
+                transactions = cursor.fetchall()
+                data["active_transactions"] = transactions
+                data["transaction_count"] = len(transactions)
+                
+                # Long running transactions
+                data["long_running_transactions"] = [
+                    trx for trx in transactions
+                    if trx["trx_started"] and 
+                    (datetime.now() - trx["trx_started"]).total_seconds() > 60
+                ]
+                
+                # Transaction isolation level
+                cursor.execute("SELECT @@tx_isolation as isolation_level")
+                result = cursor.fetchone()
+                if result:
+                    data["default_isolation_level"] = result["isolation_level"]
+                else:
+                    cursor.execute("SELECT @@transaction_isolation as isolation_level")
+                    result = cursor.fetchone()
+                    data["default_isolation_level"] = result["isolation_level"] if result else "UNKNOWN"
+                
+                # Rollback segment info
+                cursor.execute("""
+                    SHOW STATUS WHERE Variable_name IN (
+                        'Com_commit',
+                        'Com_rollback',
+                        'Com_rollback_to_savepoint',
+                        'Com_savepoint'
+                    )
+                """)
+                
+                for row in cursor.fetchall():
+                    data[row["Variable_name"]] = int(row["Value"])
+        except Exception as err:
+            _LOGGER.warning("Failed to get transaction info: %s", err)
+            data["active_transactions"] = []
+            data["transaction_count"] = 0
+            data["long_running_transactions"] = []
         
         return data
     
@@ -897,16 +998,15 @@ class MySQLClient:
             
             # Available storage engines
             cursor.execute("SHOW ENGINES")
-            available_engines = {
-                row["Engine"]: {
+            available_engines = {}
+            for row in cursor.fetchall():
+                available_engines[row["Engine"]] = {
                     "support": row["Support"],
                     "comment": row["Comment"],
-                    "transactions": row["Transactions"],
-                    "xa": row["XA"],
-                    "savepoints": row["Savepoints"],
+                    "transactions": row.get("Transactions", "NO"),
+                    "xa": row.get("XA", "NO"),
+                    "savepoints": row.get("Savepoints", "NO"),
                 }
-                for row in cursor.fetchall()
-            }
             
             return {
                 "engines_in_use": engines,

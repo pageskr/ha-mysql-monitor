@@ -35,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await hass.async_add_executor_job(client.test_connection)
     except Exception as err:
+        _LOGGER.error("Failed to connect to MySQL: %s", err)
         raise ConfigEntryNotReady(f"Unable to connect to MySQL: {err}") from err
     
     # Create coordinator
@@ -120,68 +121,74 @@ class MySQLDataCoordinator(DataUpdateCoordinator):
                 self._fetch_data
             )
         except Exception as err:
+            _LOGGER.error("Error fetching MySQL data: %s", err)
             raise UpdateFailed(f"Error communicating with MySQL: {err}") from err
     
     def _fetch_data(self):
         """Fetch all MySQL data."""
         data = {}
         
-        # Get server info
-        data["server_info"] = self.client.get_server_info()
-        
-        # Get global status
-        data["global_status"] = self.client.get_global_status()
-        
-        # Get global variables
-        data["global_variables"] = self.client.get_global_variables()
-        
-        # Get InnoDB status
-        data["innodb_status"] = self.client.get_innodb_status()
-        
-        # Get performance schema data
-        data["performance_data"] = self.client.get_performance_data()
-        
-        # Get process list
-        data["process_list"] = self.client.get_process_list()
-        
-        # Get replication status
-        data["replication_status"] = self.client.get_replication_status()
-        
-        # Get system resource usage
-        data["system_resources"] = self.client.get_system_resources()
-        
-        # Get database sizes
-        data["database_sizes"] = self.client.get_database_sizes(
-            self.include_dbs, self.exclude_dbs
-        )
-        
-        # Get table statistics
-        data["table_stats"] = self.client.get_table_statistics(
-            self.include_dbs, self.exclude_dbs
-        )
-        
-        # Get query cache info
-        data["query_cache"] = self.client.get_query_cache_info()
-        
-        # Get binary log info
-        data["binlog_info"] = self.client.get_binlog_info()
-        
-        # Get connection pool stats
-        data["connection_pool"] = self.client.get_connection_pool_stats()
-        
-        # Get slow query stats
-        data["slow_queries"] = self.client.get_slow_query_stats()
-        
-        # Get table lock waits
-        data["lock_waits"] = self.client.get_lock_wait_stats()
-        
-        # Get buffer pool stats
-        data["buffer_pool"] = self.client.get_buffer_pool_stats()
-        
-        # Get transaction info
-        data["transactions"] = self.client.get_transaction_info()
-        
-        # Get storage engine stats
-        data["storage_engines"] = self.client.get_storage_engine_stats()
+        try:
+            # Get server info
+            data["server_info"] = self.client.get_server_info()
+            
+            # Get global status
+            data["global_status"] = self.client.get_global_status()
+            
+            # Get global variables
+            data["global_variables"] = self.client.get_global_variables()
+            
+            # Get InnoDB status
+            data["innodb_status"] = self.client.get_innodb_status()
+            
+            # Get performance schema data
+            data["performance_data"] = self.client.get_performance_data()
+            
+            # Get process list
+            data["process_list"] = self.client.get_process_list()
+            
+            # Get replication status
+            data["replication_status"] = self.client.get_replication_status()
+            
+            # Get system resource usage
+            data["system_resources"] = self.client.get_system_resources()
+            
+            # Get database sizes
+            data["database_sizes"] = self.client.get_database_sizes(
+                self.include_dbs, self.exclude_dbs
+            )
+            
+            # Get table statistics
+            data["table_stats"] = self.client.get_table_statistics(
+                self.include_dbs, self.exclude_dbs
+            )
+            
+            # Get query cache info
+            data["query_cache"] = self.client.get_query_cache_info()
+            
+            # Get binary log info
+            data["binlog_info"] = self.client.get_binlog_info()
+            
+            # Get connection pool stats
+            data["connection_pool"] = self.client.get_connection_pool_stats()
+            
+            # Get slow query stats
+            data["slow_queries"] = self.client.get_slow_query_stats()
+            
+            # Get table lock waits
+            data["lock_waits"] = self.client.get_lock_wait_stats()
+            
+            # Get buffer pool stats
+            data["buffer_pool"] = self.client.get_buffer_pool_stats()
+            
+            # Get transaction info
+            data["transactions"] = self.client.get_transaction_info()
+            
+            # Get storage engine stats
+            data["storage_engines"] = self.client.get_storage_engine_stats()
+            
+        except Exception as err:
+            _LOGGER.error("Error in _fetch_data: %s", err)
+            raise
         
         return data
