@@ -13,6 +13,8 @@ CONF_SSL_VERIFY = "ssl_verify"
 CONF_INCLUDE_DBS = "include_dbs"
 CONF_EXCLUDE_DBS = "exclude_dbs"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_ENABLE_QUERY_CACHE = "enable_query_cache"
+CONF_ENABLE_REPLICATION = "enable_replication"
 
 # System databases to exclude
 SYSTEM_DATABASES = [
@@ -68,16 +70,6 @@ METRIC_CATEGORIES = {
         "Innodb_rows_updated",
         "Innodb_rows_deleted",
     ],
-    "cache": [
-        "Qcache_hits",
-        "Qcache_inserts",
-        "Qcache_lowmem_prunes",
-        "Qcache_not_cached",
-        "Qcache_queries_in_cache",
-        "Qcache_total_blocks",
-        "Qcache_free_blocks",
-        "Qcache_free_memory",
-    ],
     "network": [
         "Bytes_received",
         "Bytes_sent",
@@ -96,19 +88,33 @@ METRIC_CATEGORIES = {
         "Innodb_row_lock_time_max",
         "Innodb_row_lock_waits",
     ],
-    "replication": [
-        "Rpl_semi_sync_master_clients",
-        "Rpl_semi_sync_master_net_waits",
-        "Rpl_semi_sync_master_no_tx",
-        "Rpl_semi_sync_master_status",
-        "Rpl_semi_sync_master_tx_avg_wait_time",
-        "Rpl_semi_sync_master_tx_wait_time",
-        "Rpl_semi_sync_master_tx_waits",
-        "Rpl_semi_sync_master_wait_pos_backtraverse",
-        "Rpl_semi_sync_master_wait_sessions",
-        "Rpl_semi_sync_master_yes_tx",
-    ],
 }
+
+# Query cache metrics (conditional)
+QUERY_CACHE_METRICS = [
+    "Qcache_hits",
+    "Qcache_inserts",
+    "Qcache_lowmem_prunes",
+    "Qcache_not_cached",
+    "Qcache_queries_in_cache",
+    "Qcache_total_blocks",
+    "Qcache_free_blocks",
+    "Qcache_free_memory",
+]
+
+# Replication metrics (conditional)
+REPLICATION_METRICS = [
+    "Rpl_semi_sync_master_clients",
+    "Rpl_semi_sync_master_net_waits",
+    "Rpl_semi_sync_master_no_tx",
+    "Rpl_semi_sync_master_status",
+    "Rpl_semi_sync_master_tx_avg_wait_time",
+    "Rpl_semi_sync_master_tx_wait_time",
+    "Rpl_semi_sync_master_tx_waits",
+    "Rpl_semi_sync_master_wait_pos_backtraverse",
+    "Rpl_semi_sync_master_wait_sessions",
+    "Rpl_semi_sync_master_yes_tx",
+]
 
 # Units for metrics
 METRIC_UNITS = {

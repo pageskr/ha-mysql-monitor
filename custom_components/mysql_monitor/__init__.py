@@ -1,6 +1,7 @@
 """MySQL Monitor Integration for Home Assistant."""
 import logging
 from datetime import timedelta
+from decimal import Decimal
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -8,12 +9,28 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
+from .const import (
+    DOMAIN, 
+    DEFAULT_SCAN_INTERVAL,
+    CONF_ENABLE_QUERY_CACHE,
+    CONF_ENABLE_REPLICATION,
+)
 from .mysql_client import MySQLClient
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
+
+
+def convert_decimal(obj):
+    """Convert Decimal objects to float for JSON serialization."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimal(item) for item in obj]
+    return obj
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -107,6 +124,10 @@ class MySQLDataCoordinator(DataUpdateCoordinator):
             if db.strip()
         ]
         
+        # Feature flags
+        self.enable_query_cache = entry.options.get(CONF_ENABLE_QUERY_CACHE, False)
+        self.enable_replication = entry.options.get(CONF_ENABLE_REPLICATION, False)
+        
         super().__init__(
             hass,
             _LOGGER,
@@ -117,9 +138,11 @@ class MySQLDataCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from MySQL."""
         try:
-            return await self.hass.async_add_executor_job(
+            data = await self.hass.async_add_executor_job(
                 self._fetch_data
             )
+            # Convert all Decimal objects to float
+            return convert_decimal(data)
         except Exception as err:
             _LOGGER.error("Error fetching MySQL data: %s", err)
             raise UpdateFailed(f"Error communicating with MySQL: {err}") from err
@@ -147,8 +170,11 @@ class MySQLDataCoordinator(DataUpdateCoordinator):
             # Get process list
             data["process_list"] = self.client.get_process_list()
             
-            # Get replication status
-            data["replication_status"] = self.client.get_replication_status()
+            # Get replication status (conditional)
+            if self.enable_replication:
+                data["replication_status"] = self.client.get_replication_status()
+            else:
+                data["replication_status"] = {}
             
             # Get system resource usage
             data["system_resources"] = self.client.get_system_resources()
@@ -163,8 +189,11 @@ class MySQLDataCoordinator(DataUpdateCoordinator):
                 self.include_dbs, self.exclude_dbs
             )
             
-            # Get query cache info
-            data["query_cache"] = self.client.get_query_cache_info()
+            # Get query cache info (conditional)
+            if self.enable_query_cache:
+                data["query_cache"] = self.client.get_query_cache_info()
+            else:
+                data["query_cache"] = {"enabled": False}
             
             # Get binary log info
             data["binlog_info"] = self.client.get_binlog_info()
@@ -186,6 +215,12 @@ class MySQLDataCoordinator(DataUpdateCoordinator):
             
             # Get storage engine stats
             data["storage_engines"] = self.client.get_storage_engine_stats()
+            
+            # Store feature flags
+            data["features"] = {
+                "query_cache": self.enable_query_cache,
+                "replication": self.enable_replication,
+            }
             
         except Exception as err:
             _LOGGER.error("Error in _fetch_data: %s", err)

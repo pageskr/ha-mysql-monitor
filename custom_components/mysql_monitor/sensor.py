@@ -24,6 +24,8 @@ from .const import (
     DOMAIN,
     METRIC_CATEGORIES,
     METRIC_UNITS,
+    QUERY_CACHE_METRICS,
+    REPLICATION_METRICS,
     RESOURCE_THRESHOLDS,
     SENSOR_ICONS,
 )
@@ -41,6 +43,11 @@ async def async_setup_entry(
     
     sensors = []
     
+    # Get feature flags
+    features = coordinator.data.get("features", {})
+    enable_query_cache = features.get("query_cache", False)
+    enable_replication = features.get("replication", False)
+    
     # Server info sensor
     sensors.append(MySQLServerInfoSensor(coordinator, entry))
     
@@ -49,6 +56,20 @@ async def async_setup_entry(
         for metric in metrics:
             sensors.append(
                 MySQLGlobalStatusSensor(coordinator, entry, metric, category)
+            )
+    
+    # Query cache sensors (conditional)
+    if enable_query_cache:
+        for metric in QUERY_CACHE_METRICS:
+            sensors.append(
+                MySQLGlobalStatusSensor(coordinator, entry, metric, "cache")
+            )
+    
+    # Replication sensors (conditional)
+    if enable_replication:
+        for metric in REPLICATION_METRICS:
+            sensors.append(
+                MySQLGlobalStatusSensor(coordinator, entry, metric, "replication")
             )
     
     # System resource sensors
@@ -71,7 +92,6 @@ async def async_setup_entry(
     
     # Performance sensors
     sensors.extend([
-        MySQLPerformanceSensor(coordinator, entry, "query_cache_hit_rate"),
         MySQLPerformanceSensor(coordinator, entry, "buffer_pool_hit_rate"),
         MySQLPerformanceSensor(coordinator, entry, "connections_usage"),
         MySQLPerformanceSensor(coordinator, entry, "slow_query_count"),
@@ -79,8 +99,12 @@ async def async_setup_entry(
         MySQLPerformanceSensor(coordinator, entry, "transaction_count"),
     ])
     
-    # Replication sensors
-    if coordinator.data and coordinator.data.get("replication_status"):
+    # Query cache hit rate sensor (conditional)
+    if enable_query_cache:
+        sensors.append(MySQLPerformanceSensor(coordinator, entry, "query_cache_hit_rate"))
+    
+    # Replication sensors (conditional)
+    if enable_replication and coordinator.data.get("replication_status"):
         sensors.append(MySQLReplicationSensor(coordinator, entry))
     
     async_add_entities(sensors)
@@ -220,7 +244,16 @@ class MySQLGlobalStatusSensor(MySQLBaseSensor):
         # Add related metrics from the same category
         if self.coordinator.data and "global_status" in self.coordinator.data:
             status = self.coordinator.data["global_status"]
-            for metric in METRIC_CATEGORIES.get(self._category, []):
+            
+            # Determine which metrics to include
+            if self._category == "cache":
+                related_metrics = QUERY_CACHE_METRICS
+            elif self._category == "replication":
+                related_metrics = REPLICATION_METRICS
+            else:
+                related_metrics = METRIC_CATEGORIES.get(self._category, [])
+            
+            for metric in related_metrics:
                 if metric != self._metric and metric in status:
                     try:
                         attrs[metric.lower()] = float(status[metric])

@@ -31,7 +31,9 @@
         "data": {
           "include_dbs": "Include databases (comma-separated, leave empty for all)",
           "exclude_dbs": "Exclude databases (comma-separated)",
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval": "Update interval (seconds)",
+          "enable_query_cache": "Enable Query Cache monitoring",
+          "enable_replication": "Enable Replication monitoring"
         }
       }
     }

@@ -31,7 +31,9 @@
         "data": {
           "include_dbs": "포함할 데이터베이스 (쉼표로 구분, 비워두면 전체)",
           "exclude_dbs": "제외할 데이터베이스 (쉼표로 구분)",
-          "scan_interval": "업데이트 주기 (초)"
+          "scan_interval": "업데이트 주기 (초)",
+          "enable_query_cache": "쿼리 캐시 모니터링 활성화",
+          "enable_replication": "복제 모니터링 활성화"
         }
       }
     }

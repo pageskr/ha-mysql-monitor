@@ -21,6 +21,8 @@ from .const import (
     CONF_SSL_CA,
     CONF_SSL_VERIFY,
     CONF_USE_SSL,
+    CONF_ENABLE_QUERY_CACHE,
+    CONF_ENABLE_REPLICATION,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -70,6 +72,8 @@ class MySQLMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_INCLUDE_DBS: "",
                         CONF_EXCLUDE_DBS: "",
                         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                        CONF_ENABLE_QUERY_CACHE: False,
+                        CONF_ENABLE_REPLICATION: False,
                     },
                 )
             except Exception as err:
@@ -130,6 +134,14 @@ class MySQLMonitorOptionsFlow(config_entries.OptionsFlow):
                     CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                 ),
             ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
+            vol.Optional(
+                CONF_ENABLE_QUERY_CACHE,
+                default=self.config_entry.options.get(CONF_ENABLE_QUERY_CACHE, False),
+            ): bool,
+            vol.Optional(
+                CONF_ENABLE_REPLICATION,
+                default=self.config_entry.options.get(CONF_ENABLE_REPLICATION, False),
+            ): bool,
         })
         
         return self.async_show_form(
