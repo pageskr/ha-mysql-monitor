@@ -14,6 +14,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -72,13 +73,10 @@ async def async_setup_entry(
                 MySQLGlobalStatusSensor(coordinator, entry, metric, "replication")
             )
     
-    # System resource sensors
+    # System resource sensors (removed MySQL-specific CPU/Memory/Data Directory)
     sensors.extend([
         MySQLSystemResourceSensor(coordinator, entry, "cpu_percent", "CPU Usage"),
         MySQLSystemResourceSensor(coordinator, entry, "memory_percent", "Memory Usage"),
-        MySQLSystemResourceSensor(coordinator, entry, "datadir_percent", "Data Directory Usage"),
-        MySQLSystemResourceSensor(coordinator, entry, "mysql_cpu_percent", "MySQL CPU Usage"),
-        MySQLSystemResourceSensor(coordinator, entry, "mysql_memory_percent", "MySQL Memory Usage"),
     ])
     
     # Database size sensors
@@ -125,12 +123,6 @@ class MySQLBaseSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._sensor_type = sensor_type
         self._name_suffix = name_suffix
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": f"MySQL {entry.data['host']}:{entry.data['port']}",
-            "manufacturer": "Oracle Corporation",
-            "model": "MySQL Server",
-        }
     
     @property
     def unique_id(self) -> str:
@@ -141,6 +133,17 @@ class MySQLBaseSensor(CoordinatorEntity, SensorEntity):
     def name(self) -> str:
         """Return the name."""
         return f"MySQL {self._name_suffix}"
+    
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=f"MySQL {self._entry.data['host']}:{self._entry.data['port']}",
+            manufacturer="Oracle Corporation",
+            model="MySQL Server",
+            entry_type=DeviceEntryType.SERVICE,
+        )
 
 
 class MySQLServerInfoSensor(MySQLBaseSensor):
@@ -188,6 +191,14 @@ class MySQLServerInfoSensor(MySQLBaseSensor):
             attrs["innodb_buffer_pool_size"] = vars_data.get("innodb_buffer_pool_size")
             attrs["query_cache_size"] = vars_data.get("query_cache_size")
             attrs["version_comment"] = vars_data.get("version_comment")
+        
+        # Add system resource info
+        if "system_resources" in self.coordinator.data:
+            resources = self.coordinator.data["system_resources"]
+            attrs["cpu_count"] = resources.get("cpu_count")
+            attrs["memory_total_gb"] = round(resources.get("memory_total", 0) / (1024**3), 2)
+            attrs["datadir_total_gb"] = round(resources.get("datadir_total", 0) / (1024**3), 2)
+            attrs["datadir_percent"] = round(resources.get("datadir_percent", 0), 2)
         
         return attrs
 
@@ -283,8 +294,6 @@ class MySQLSystemResourceSensor(MySQLBaseSensor):
             self._attr_icon = SENSOR_ICONS["cpu"]
         elif "memory" in resource_type:
             self._attr_icon = SENSOR_ICONS["memory"]
-        else:
-            self._attr_icon = SENSOR_ICONS["disk"]
     
     @property
     def native_value(self) -> Optional[float]:
@@ -308,24 +317,23 @@ class MySQLSystemResourceSensor(MySQLBaseSensor):
         resources = self.coordinator.data["system_resources"]
         attrs = {}
         
-        # Add all system resource data
-        for key, value in resources.items():
-            if isinstance(value, dict):
-                for sub_key, sub_value in value.items():
-                    attrs[f"{key}_{sub_key}"] = sub_value
-            else:
-                attrs[key] = value
-        
-        # Add threshold status
-        if self.native_value is not None:
-            if "cpu" in self._resource_type:
+        # Add relevant system resource data
+        if "cpu" in self._resource_type:
+            attrs["cpu_count"] = resources.get("cpu_count")
+            # Add threshold status
+            if self.native_value is not None:
                 if self.native_value >= RESOURCE_THRESHOLDS["cpu_critical"]:
                     attrs["status"] = "critical"
                 elif self.native_value >= RESOURCE_THRESHOLDS["cpu_warning"]:
                     attrs["status"] = "warning"
                 else:
                     attrs["status"] = "normal"
-            elif "memory" in self._resource_type:
+        elif "memory" in self._resource_type:
+            attrs["memory_total_gb"] = round(resources.get("memory_total", 0) / (1024**3), 2)
+            attrs["memory_used_gb"] = round(resources.get("memory_used", 0) / (1024**3), 2)
+            attrs["memory_available_gb"] = round(resources.get("memory_available", 0) / (1024**3), 2)
+            # Add threshold status
+            if self.native_value is not None:
                 if self.native_value >= RESOURCE_THRESHOLDS["memory_critical"]:
                     attrs["status"] = "critical"
                 elif self.native_value >= RESOURCE_THRESHOLDS["memory_warning"]:

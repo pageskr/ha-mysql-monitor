@@ -369,40 +369,6 @@ class MySQLClient:
             data["memory_available"] = memory.available
             data["memory_percent"] = memory.percent
             
-            # Try to get MySQL process specific stats
-            try:
-                # Find MySQL process by connection
-                for proc in psutil.process_iter(['pid', 'name', 'connections']):
-                    try:
-                        if 'mysql' in proc.info['name'].lower():
-                            connections = proc.connections()
-                            for conn in connections:
-                                if conn.status == 'LISTEN' and conn.laddr.port == self.port:
-                                    mysql_proc = proc
-                                    
-                                    # MySQL process specific stats
-                                    data["mysql_cpu_percent"] = mysql_proc.cpu_percent(interval=0.1)
-                                    data["mysql_memory_info"] = mysql_proc.memory_info()._asdict()
-                                    data["mysql_memory_percent"] = mysql_proc.memory_percent()
-                                    data["mysql_num_threads"] = mysql_proc.num_threads()
-                                    data["mysql_connections"] = len(mysql_proc.connections())
-                                    
-                                    # I/O counters
-                                    try:
-                                        io_counters = mysql_proc.io_counters()
-                                        data["mysql_io_read_count"] = io_counters.read_count
-                                        data["mysql_io_write_count"] = io_counters.write_count
-                                        data["mysql_io_read_bytes"] = io_counters.read_bytes
-                                        data["mysql_io_write_bytes"] = io_counters.write_bytes
-                                    except Exception:
-                                        pass
-                                    
-                                    break
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-            except Exception as err:
-                _LOGGER.debug("Could not get MySQL process stats: %s", err)
-            
             # Disk usage for data directory
             try:
                 conn = self._get_connection()
@@ -939,15 +905,21 @@ class MySQLClient:
                     (datetime.now() - trx["trx_started"]).total_seconds() > 60
                 ]
                 
-                # Transaction isolation level
-                cursor.execute("SELECT @@tx_isolation as isolation_level")
-                result = cursor.fetchone()
-                if result:
-                    data["default_isolation_level"] = result["isolation_level"]
-                else:
+                # Transaction isolation level - try both variables
+                try:
                     cursor.execute("SELECT @@transaction_isolation as isolation_level")
                     result = cursor.fetchone()
-                    data["default_isolation_level"] = result["isolation_level"] if result else "UNKNOWN"
+                    if result:
+                        data["default_isolation_level"] = result["isolation_level"]
+                except Exception:
+                    # Fallback for older MySQL versions
+                    try:
+                        cursor.execute("SELECT @@tx_isolation as isolation_level")
+                        result = cursor.fetchone()
+                        if result:
+                            data["default_isolation_level"] = result["isolation_level"]
+                    except Exception:
+                        data["default_isolation_level"] = "UNKNOWN"
                 
                 # Rollback segment info
                 cursor.execute("""
