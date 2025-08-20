@@ -27,6 +27,7 @@ from .const import (
     METRIC_UNITS,
     QUERY_CACHE_METRICS,
     REPLICATION_METRICS,
+    CONNECTION_ERROR_METRICS,
     RESOURCE_THRESHOLDS,
     SENSOR_ICONS,
 )
@@ -59,6 +60,9 @@ async def async_setup_entry(
                 MySQLGlobalStatusSensor(coordinator, entry, metric, category)
             )
     
+    # Connection Errors aggregate sensor
+    sensors.append(MySQLConnectionErrorsSensor(coordinator, entry))
+    
     # Query cache sensors (conditional)
     if enable_query_cache:
         for metric in QUERY_CACHE_METRICS:
@@ -73,7 +77,7 @@ async def async_setup_entry(
                 MySQLGlobalStatusSensor(coordinator, entry, metric, "replication")
             )
     
-    # System resource sensors (removed MySQL-specific CPU/Memory/Data Directory)
+    # System resource sensors
     sensors.extend([
         MySQLSystemResourceSensor(coordinator, entry, "cpu_percent", "CPU Usage"),
         MySQLSystemResourceSensor(coordinator, entry, "memory_percent", "Memory Usage"),
@@ -93,7 +97,6 @@ async def async_setup_entry(
         MySQLPerformanceSensor(coordinator, entry, "buffer_pool_hit_rate"),
         MySQLPerformanceSensor(coordinator, entry, "connections_usage"),
         MySQLPerformanceSensor(coordinator, entry, "slow_query_count"),
-        MySQLPerformanceSensor(coordinator, entry, "lock_wait_count"),
         MySQLPerformanceSensor(coordinator, entry, "transaction_count"),
     ])
     
@@ -200,6 +203,13 @@ class MySQLServerInfoSensor(MySQLBaseSensor):
             attrs["datadir_total_gb"] = round(resources.get("datadir_total", 0) / (1024**3), 2)
             attrs["datadir_percent"] = round(resources.get("datadir_percent", 0), 2)
         
+        # Add lock wait statistics
+        if "lock_waits" in self.coordinator.data:
+            lock_data = self.coordinator.data["lock_waits"]
+            attrs["innodb_lock_wait_timeout"] = lock_data.get("lock_wait_timeout")
+            attrs["table_locks_immediate"] = lock_data.get("Table_locks_immediate")
+            attrs["table_locks_waited"] = lock_data.get("Table_locks_waited")
+        
         return attrs
 
 
@@ -270,6 +280,60 @@ class MySQLGlobalStatusSensor(MySQLBaseSensor):
                         attrs[metric.lower()] = float(status[metric])
                     except (ValueError, TypeError):
                         attrs[metric.lower()] = status[metric]
+            
+            # Add lock statistics for InnoDB metrics
+            if self._category == "innodb" and "lock_waits" in self.coordinator.data:
+                lock_data = self.coordinator.data["lock_waits"]
+                attrs["innodb_row_lock_waits"] = lock_data.get("Innodb_row_lock_waits")
+                attrs["innodb_row_lock_time"] = lock_data.get("Innodb_row_lock_time")
+                attrs["innodb_row_lock_time_avg"] = lock_data.get("Innodb_row_lock_time_avg")
+                attrs["innodb_row_lock_time_max"] = lock_data.get("Innodb_row_lock_time_max")
+                attrs["innodb_row_lock_current_waits"] = lock_data.get("Innodb_row_lock_current_waits")
+        
+        return attrs
+
+
+class MySQLConnectionErrorsSensor(MySQLBaseSensor):
+    """MySQL connection errors aggregate sensor."""
+    
+    def __init__(self, coordinator: DataUpdateCoordinator, entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, "connection_errors", "Connection Errors")
+        self._attr_icon = SENSOR_ICONS["errors"]
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+    
+    @property
+    def native_value(self) -> Optional[int]:
+        """Return the total of all connection errors."""
+        if not self.coordinator.data or "global_status" not in self.coordinator.data:
+            return None
+        
+        status = self.coordinator.data["global_status"]
+        total = 0
+        
+        for error_metric in CONNECTION_ERROR_METRICS:
+            value = status.get(error_metric, 0)
+            try:
+                total += int(value)
+            except (ValueError, TypeError):
+                pass
+        
+        return total
+    
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return state attributes with individual error counts."""
+        attrs = {}
+        
+        if self.coordinator.data and "global_status" in self.coordinator.data:
+            status = self.coordinator.data["global_status"]
+            
+            for error_metric in CONNECTION_ERROR_METRICS:
+                value = status.get(error_metric, 0)
+                try:
+                    attrs[error_metric.lower()] = int(value)
+                except (ValueError, TypeError):
+                    attrs[error_metric.lower()] = 0
         
         return attrs
 
@@ -434,7 +498,6 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
             "buffer_pool_hit_rate": "Buffer Pool Hit Rate",
             "connections_usage": "Connections Usage",
             "slow_query_count": "Slow Queries",
-            "lock_wait_count": "Lock Waits",
             "transaction_count": "Active Transactions",
         }
         super().__init__(coordinator, entry, metric_type, name_map.get(metric_type, metric_type))
@@ -469,11 +532,6 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
         elif self._metric_type == "slow_query_count":
             slow_queries = self.coordinator.data.get("slow_queries", {})
             return slow_queries.get("slow_query_count", 0)
-            
-        elif self._metric_type == "lock_wait_count":
-            lock_waits = self.coordinator.data.get("lock_waits", {})
-            current_waits = lock_waits.get("current_lock_waits", [])
-            return len(current_waits)
             
         elif self._metric_type == "transaction_count":
             transactions = self.coordinator.data.get("transactions", {})
@@ -525,6 +583,11 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
                 "long_query_time": slow_queries.get("long_query_time"),
                 "log_file": slow_queries.get("slow_query_log_file"),
             })
+            
+            # Add lock wait stats
+            if "lock_waits" in self.coordinator.data:
+                lock_data = self.coordinator.data["lock_waits"]
+                attrs["current_lock_waits"] = len(lock_data.get("current_lock_waits", []))
             
         elif self._metric_type == "transaction_count":
             transactions = self.coordinator.data.get("transactions", {})

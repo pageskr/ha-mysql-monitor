@@ -24,6 +24,16 @@ SYSTEM_DATABASES = [
     "sys",
 ]
 
+# Connection error metrics to aggregate
+CONNECTION_ERROR_METRICS = [
+    "Connection_errors_accept",
+    "Connection_errors_internal",
+    "Connection_errors_max_connections",
+    "Connection_errors_peer_address",
+    "Connection_errors_select",
+    "Connection_errors_tcpwrap",
+]
+
 # Metric categories
 METRIC_CATEGORIES = {
     "connections": [
@@ -32,12 +42,6 @@ METRIC_CATEGORIES = {
         "Max_used_connections",
         "Aborted_clients",
         "Aborted_connects",
-        "Connection_errors_accept",
-        "Connection_errors_internal",
-        "Connection_errors_max_connections",
-        "Connection_errors_peer_address",
-        "Connection_errors_select",
-        "Connection_errors_tcpwrap",
     ],
     "queries": [
         "Queries",
@@ -63,8 +67,6 @@ METRIC_CATEGORIES = {
         "Innodb_data_read",
         "Innodb_data_written",
         "Innodb_os_log_written",
-        "Innodb_row_lock_waits",
-        "Innodb_row_lock_time",
         "Innodb_rows_read",
         "Innodb_rows_inserted",
         "Innodb_rows_updated",
@@ -78,15 +80,6 @@ METRIC_CATEGORIES = {
         "Created_tmp_disk_tables",
         "Created_tmp_files",
         "Created_tmp_tables",
-    ],
-    "locks": [
-        "Table_locks_immediate",
-        "Table_locks_waited",
-        "Innodb_row_lock_current_waits",
-        "Innodb_row_lock_time",
-        "Innodb_row_lock_time_avg",
-        "Innodb_row_lock_time_max",
-        "Innodb_row_lock_waits",
     ],
 }
 
@@ -126,11 +119,7 @@ METRIC_UNITS = {
         "Innodb_os_log_written",
         "Qcache_free_memory",
     ],
-    "milliseconds": [
-        "Innodb_row_lock_time",
-        "Innodb_row_lock_time_avg",
-        "Innodb_row_lock_time_max",
-    ],
+    "milliseconds": [],
     "percentage": [],
 }
 
@@ -151,6 +140,7 @@ SENSOR_ICONS = {
     "size": "mdi:database",
     "tables": "mdi:table-multiple",
     "rows": "mdi:table-row",
+    "errors": "mdi:alert-circle",
 }
 
 # Resource monitor thresholds

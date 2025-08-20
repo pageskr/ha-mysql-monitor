@@ -4,10 +4,10 @@
 
 ## 주요 기능
 
-- **시스템 리소스 모니터링**: CPU, 메모리, 디스크 사용량
-- **MySQL 성능 메트릭**: 연결, 쿼리, InnoDB, 캐시 통계
+- **시스템 리소스 모니터링**: CPU, 메모리 사용량
+- **MySQL 성능 메트릭**: 연결, 쿼리, InnoDB 통계
 - **데이터베이스 분석**: 크기, 테이블 수, 행 수 추적
-- **고급 모니터링**: 트랜잭션, 락, 복제 상태
+- **고급 모니터링**: 트랜잭션, 복제 상태
 
 ## 설치 방법
 
@@ -25,6 +25,10 @@ GRANT SELECT, SHOW VIEW, REPLICATION CLIENT, PROCESS ON *.* TO 'ha_monitor'@'%';
 GRANT SELECT ON performance_schema.* TO 'ha_monitor'@'%';
 FLUSH PRIVILEGES;
 ```
+
+## 제작자
+
+**Pages in Korea (pages.kr)** (@pageskr)
 
 ## 라이선스
 

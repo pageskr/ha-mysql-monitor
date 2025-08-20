@@ -5,16 +5,15 @@ A comprehensive MySQL monitoring integration for Home Assistant that provides de
 ## Features
 
 ### 🖥️ System Resource Monitoring
-- **CPU Usage**: Overall system and MySQL process specific CPU usage
-- **Memory Usage**: System memory and MySQL process memory consumption
-- **Disk Usage**: Data directory disk space utilization
-- **I/O Statistics**: Read/write operations and bytes transferred
+- **CPU Usage**: Overall system CPU usage
+- **Memory Usage**: System memory consumption
+- **Server Info**: Version, uptime, configuration details
 
 ### 📊 MySQL Performance Metrics
 - **Connection Statistics**: Active, idle, and maximum connections
 - **Query Performance**: Query rates, slow queries, query cache hit rates
-- **InnoDB Metrics**: Buffer pool usage, row operations, lock waits
-- **Replication Status**: Master/slave status and lag monitoring
+- **InnoDB Metrics**: Buffer pool usage, row operations, data I/O
+- **Replication Status**: Master/slave status and lag monitoring (optional)
 
 ### 💾 Database & Table Analytics
 - **Database Sizes**: Track size, table count, and row counts per database
@@ -23,9 +22,9 @@ A comprehensive MySQL monitoring integration for Home Assistant that provides de
 
 ### 🔍 Advanced Monitoring
 - **Transaction Monitoring**: Active transactions, long-running queries
-- **Lock Analysis**: Current lock waits, deadlock detection
 - **Binary Log Status**: Binlog file sizes and positions
 - **Performance Schema**: Top queries, table I/O, user statistics
+- **Connection Errors**: Comprehensive error tracking
 
 ## Installation
 
@@ -47,6 +46,8 @@ A comprehensive MySQL monitoring integration for Home Assistant that provides de
 - **Include Databases**: Comma-separated list of databases to monitor (empty = all)
 - **Exclude Databases**: Comma-separated list of databases to exclude
 - **Update Interval**: How often to fetch data (10-3600 seconds)
+- **Enable Query Cache Monitoring**: Monitor query cache metrics (optional)
+- **Enable Replication Monitoring**: Monitor replication status (optional)
 
 ## Security Recommendations
 
@@ -66,21 +67,17 @@ FLUSH PRIVILEGES;
 ## Sensors Created
 
 ### Global Status Sensors
-- Connections (threads_connected, threads_running, etc.)
+- Connections (threads_connected, threads_running, connection_errors)
 - Queries (queries, questions, slow_queries, etc.)
 - InnoDB metrics (buffer pool, data I/O, row operations)
-- Cache statistics (query cache hits/misses)
+- Cache statistics (query cache hits/misses) - optional
 - Network I/O (bytes sent/received)
 - Temporary tables and files
-- Lock statistics
-- Replication metrics
+- Replication metrics - optional
 
 ### System Resource Sensors
 - `sensor.mysql_cpu_usage`: Overall CPU usage
 - `sensor.mysql_memory_usage`: Overall memory usage
-- `sensor.mysql_data_directory_usage`: Data directory disk usage
-- `sensor.mysql_mysql_cpu_usage`: MySQL process CPU usage
-- `sensor.mysql_mysql_memory_usage`: MySQL process memory usage
 
 ### Database Sensors (per database)
 - `sensor.mysql_db_[name]_size`: Database size in bytes
@@ -88,11 +85,10 @@ FLUSH PRIVILEGES;
 - `sensor.mysql_db_[name]_rows`: Estimated total rows
 
 ### Performance Sensors
-- `sensor.mysql_query_cache_hit_rate`: Query cache effectiveness
+- `sensor.mysql_query_cache_hit_rate`: Query cache effectiveness (optional)
 - `sensor.mysql_buffer_pool_hit_rate`: InnoDB buffer pool effectiveness
 - `sensor.mysql_connections_usage`: Connection pool usage percentage
 - `sensor.mysql_slow_queries`: Number of slow queries
-- `sensor.mysql_lock_waits`: Current lock wait count
 - `sensor.mysql_active_transactions`: Number of active transactions
 
 ## Automation Examples
@@ -103,7 +99,7 @@ automation:
   - alias: "MySQL High CPU Alert"
     trigger:
       - platform: numeric_state
-        entity_id: sensor.mysql_mysql_cpu_usage
+        entity_id: sensor.mysql_cpu_usage
         above: 90
         for: "00:05:00"
     action:
@@ -178,7 +174,7 @@ hours_to_show: 168
 
 ## Author
 
-**Pages in Korea** (@pageskr)
+**Pages in Korea (pages.kr)** (@pageskr)
 
 ## License
 
