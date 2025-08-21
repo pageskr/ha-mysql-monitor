@@ -53,12 +53,13 @@ async def async_setup_entry(
     # Server info sensor
     sensors.append(MySQLServerInfoSensor(coordinator, entry))
     
-    # Global status sensors
+    # Global status sensors (Slow_queries는 여기서 제외)
     for category, metrics in METRIC_CATEGORIES.items():
         for metric in metrics:
-            sensors.append(
-                MySQLGlobalStatusSensor(coordinator, entry, metric, category)
-            )
+            if metric != "Slow_queries":  # Slow_queries는 별도 처리
+                sensors.append(
+                    MySQLGlobalStatusSensor(coordinator, entry, metric, category)
+                )
     
     # Connection Errors aggregate sensor
     sensors.append(MySQLConnectionErrorsSensor(coordinator, entry))
@@ -96,7 +97,7 @@ async def async_setup_entry(
     sensors.extend([
         MySQLPerformanceSensor(coordinator, entry, "buffer_pool_hit_rate"),
         MySQLPerformanceSensor(coordinator, entry, "connections_usage"),
-        MySQLPerformanceSensor(coordinator, entry, "slow_query_count"),
+        MySQLPerformanceSensor(coordinator, entry, "slow_query_logs"),  # 이름 변경
         MySQLPerformanceSensor(coordinator, entry, "transaction_count"),
     ])
     
@@ -192,8 +193,19 @@ class MySQLServerInfoSensor(MySQLBaseSensor):
             vars_data = self.coordinator.data["global_variables"]
             attrs["max_connections"] = vars_data.get("max_connections")
             attrs["innodb_buffer_pool_size"] = vars_data.get("innodb_buffer_pool_size")
-            attrs["query_cache_size"] = vars_data.get("query_cache_size")
+            # query_cache_size를 정수로 변환
+            cache_size = vars_data.get("query_cache_size", "0")
+            try:
+                attrs["query_cache_size"] = int(cache_size)
+            except (ValueError, TypeError):
+                attrs["query_cache_size"] = 0
             attrs["version_comment"] = vars_data.get("version_comment")
+            # innodb_lock_wait_timeout 추가
+            lock_timeout = vars_data.get("innodb_lock_wait_timeout", "50")
+            try:
+                attrs["innodb_lock_wait_timeout"] = int(lock_timeout)
+            except (ValueError, TypeError):
+                attrs["innodb_lock_wait_timeout"] = 50
         
         # Add system resource info
         if "system_resources" in self.coordinator.data:
@@ -203,11 +215,6 @@ class MySQLServerInfoSensor(MySQLBaseSensor):
             attrs["datadir_total_gb"] = round(resources.get("datadir_total", 0) / (1024**3), 2)
             attrs["datadir_percent"] = round(resources.get("datadir_percent", 0), 2)
         
-        # Add lock wait statistics from lock_waits data
-        if "lock_waits" in self.coordinator.data:
-            lock_data = self.coordinator.data["lock_waits"]
-            attrs["innodb_lock_wait_timeout"] = lock_data.get("lock_wait_timeout")
-            
         # Add table lock statistics from global_status
         if "global_status" in self.coordinator.data:
             status = self.coordinator.data["global_status"]
@@ -514,7 +521,7 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
             "query_cache_hit_rate": "Query Cache Hit Rate",
             "buffer_pool_hit_rate": "Buffer Pool Hit Rate",
             "connections_usage": "Connections Usage",
-            "slow_query_count": "Slow Queries",
+            "slow_query_logs": "Slow Query Logs",  # 변경됨
             "transaction_count": "Active Transactions",
         }
         super().__init__(coordinator, entry, metric_type, name_map.get(metric_type, metric_type))
@@ -524,7 +531,7 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
         if "rate" in metric_type or "usage" in metric_type:
             self._attr_native_unit_of_measurement = PERCENTAGE
             self._attr_icon = "mdi:gauge"
-        elif "count" in metric_type:
+        elif "count" in metric_type or "logs" in metric_type:
             self._attr_icon = "mdi:counter"
     
     @property
@@ -546,9 +553,16 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
             conn_pool = self.coordinator.data.get("connection_pool", {})
             return round(conn_pool.get("connection_usage_pct", 0), 2)
             
-        elif self._metric_type == "slow_query_count":
-            slow_queries = self.coordinator.data.get("slow_queries", {})
-            return slow_queries.get("slow_query_count", 0)
+        elif self._metric_type == "slow_query_logs":
+            # global_status에서 Slow_queries 값을 가져옴
+            if "global_status" in self.coordinator.data:
+                status = self.coordinator.data["global_status"]
+                slow_queries = status.get("Slow_queries", 0)
+                try:
+                    return int(slow_queries)
+                except (ValueError, TypeError):
+                    return 0
+            return 0
             
         elif self._metric_type == "transaction_count":
             transactions = self.coordinator.data.get("transactions", {})
@@ -593,7 +607,8 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
                 "max_used_connections": conn_pool.get("max_used_connections"),
             })
             
-        elif self._metric_type == "slow_query_count":
+        elif self._metric_type == "slow_query_logs":
+            # slow_queries 데이터에서 정보 가져오기
             slow_queries = self.coordinator.data.get("slow_queries", {})
             attrs.update({
                 "enabled": slow_queries.get("enabled"),
@@ -606,6 +621,12 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
                 lock_data = self.coordinator.data["lock_waits"]
                 current_waits = lock_data.get("current_lock_waits", [])
                 attrs["current_lock_waits"] = len(current_waits)
+            
+            # Add slow query related global status
+            if "global_status" in self.coordinator.data:
+                status = self.coordinator.data["global_status"]
+                attrs["questions"] = status.get("Questions")
+                attrs["queries"] = status.get("Queries")
             
         elif self._metric_type == "transaction_count":
             transactions = self.coordinator.data.get("transactions", {})
