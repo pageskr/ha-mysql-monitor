@@ -143,7 +143,7 @@ class MySQLBaseSensor(CoordinatorEntity, SensorEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
             name=f"MySQL {self._entry.data['host']}:{self._entry.data['port']}",
-            manufacturer="Oracle Corporation",
+            manufacturer="Pages in Korea (pages.kr)",
             model="MySQL Server",
             entry_type=DeviceEntryType.SERVICE,
         )
@@ -203,12 +203,19 @@ class MySQLServerInfoSensor(MySQLBaseSensor):
             attrs["datadir_total_gb"] = round(resources.get("datadir_total", 0) / (1024**3), 2)
             attrs["datadir_percent"] = round(resources.get("datadir_percent", 0), 2)
         
-        # Add lock wait statistics
+        # Add lock wait statistics from lock_waits data
         if "lock_waits" in self.coordinator.data:
             lock_data = self.coordinator.data["lock_waits"]
             attrs["innodb_lock_wait_timeout"] = lock_data.get("lock_wait_timeout")
-            attrs["table_locks_immediate"] = lock_data.get("Table_locks_immediate")
-            attrs["table_locks_waited"] = lock_data.get("Table_locks_waited")
+            
+        # Add table lock statistics from global_status
+        if "global_status" in self.coordinator.data:
+            status = self.coordinator.data["global_status"]
+            try:
+                attrs["table_locks_immediate"] = int(status.get("Table_locks_immediate", 0))
+                attrs["table_locks_waited"] = int(status.get("Table_locks_waited", 0))
+            except (ValueError, TypeError):
+                pass
         
         return attrs
 
@@ -281,14 +288,24 @@ class MySQLGlobalStatusSensor(MySQLBaseSensor):
                     except (ValueError, TypeError):
                         attrs[metric.lower()] = status[metric]
             
-            # Add lock statistics for InnoDB metrics
-            if self._category == "innodb" and "lock_waits" in self.coordinator.data:
-                lock_data = self.coordinator.data["lock_waits"]
-                attrs["innodb_row_lock_waits"] = lock_data.get("Innodb_row_lock_waits")
-                attrs["innodb_row_lock_time"] = lock_data.get("Innodb_row_lock_time")
-                attrs["innodb_row_lock_time_avg"] = lock_data.get("Innodb_row_lock_time_avg")
-                attrs["innodb_row_lock_time_max"] = lock_data.get("Innodb_row_lock_time_max")
-                attrs["innodb_row_lock_current_waits"] = lock_data.get("Innodb_row_lock_current_waits")
+            # Add lock statistics for InnoDB metrics from global_status
+            if self._category == "innodb":
+                # InnoDB lock metrics from global_status
+                lock_metrics = [
+                    "Innodb_row_lock_waits",
+                    "Innodb_row_lock_time",
+                    "Innodb_row_lock_time_avg",
+                    "Innodb_row_lock_time_max",
+                    "Innodb_row_lock_current_waits",
+                ]
+                
+                for metric in lock_metrics:
+                    value = status.get(metric)
+                    if value is not None:
+                        try:
+                            attrs[metric.lower()] = int(value)
+                        except (ValueError, TypeError):
+                            attrs[metric.lower()] = value
         
         return attrs
 
@@ -584,10 +601,11 @@ class MySQLPerformanceSensor(MySQLBaseSensor):
                 "log_file": slow_queries.get("slow_query_log_file"),
             })
             
-            # Add lock wait stats
+            # Add current lock wait count from lock_waits data
             if "lock_waits" in self.coordinator.data:
                 lock_data = self.coordinator.data["lock_waits"]
-                attrs["current_lock_waits"] = len(lock_data.get("current_lock_waits", []))
+                current_waits = lock_data.get("current_lock_waits", [])
+                attrs["current_lock_waits"] = len(current_waits)
             
         elif self._metric_type == "transaction_count":
             transactions = self.coordinator.data.get("transactions", {})
