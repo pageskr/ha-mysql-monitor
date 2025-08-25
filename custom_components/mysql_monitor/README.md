@@ -1,99 +1,177 @@
 # MySQL Monitor for Home Assistant
 
-A comprehensive MySQL monitoring integration for Home Assistant that provides detailed insights into your MySQL server performance, resource usage, and database statistics.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/release/pageskr/ha-mysql-monitor.svg)](https://github.com/pageskr/ha-mysql-monitor/releases)
+[![License](https://img.shields.io/github/license/pageskr/ha-mysql-monitor.svg)](LICENSE)
 
-## Features
+A comprehensive MySQL monitoring integration for Home Assistant that provides detailed insights into your MySQL/MariaDB server performance, resource usage, and database statistics.
 
-### 🖥️ System Resource Monitoring
-- **CPU Usage**: Overall system CPU usage
-- **Memory Usage**: System memory consumption
-- **Server Info**: Version, uptime, configuration details
+## 🚀 Features
 
-### 📊 MySQL Performance Metrics
-- **Connection Statistics**: Active, idle, and maximum connections
-- **Query Performance**: Query rates, slow queries, query cache hit rates
-- **InnoDB Metrics**: Buffer pool usage, row operations, data I/O
-- **Replication Status**: Master/slave status and lag monitoring (optional)
+### 📊 Performance Monitoring
+- **Real-time Metrics**: Track queries, connections, and throughput
+- **Query Performance**: Monitor slow queries and query cache effectiveness
+- **InnoDB Engine**: Buffer pool hit rates, I/O operations, row-level operations
+- **Connection Pool**: Active/idle connections, connection errors tracking
+- **Transaction Monitoring**: Active transactions and isolation levels
 
-### 💾 Database & Table Analytics
-- **Database Sizes**: Track size, table count, and row counts per database
-- **Table Statistics**: Largest tables, fragmented tables, tables without primary keys
-- **Storage Engine Stats**: Usage by storage engine type
+### 💾 Database Analytics
+- **Database Metrics**: Size, table count, and row statistics per database
+- **Table Analysis**: Largest tables, fragmented tables, tables without primary keys
+- **Storage Engines**: Usage statistics by storage engine type
+- **Binary Logs**: Binlog file tracking and positions
 
-### 🔍 Advanced Monitoring
-- **Transaction Monitoring**: Active transactions, long-running queries
-- **Binary Log Status**: Binlog file sizes and positions
-- **Performance Schema**: Top queries, table I/O, user statistics
-- **Connection Errors**: Comprehensive error tracking
+### 🖥️ System Resources
+- **CPU Usage**: Overall system CPU utilization
+- **Memory Usage**: System memory consumption and availability
+- **Disk Space**: Data directory usage monitoring
+- **Process Stats**: MySQL process-specific resource usage (when available)
 
-## Installation
+### 🔧 Advanced Features
+- **Replication Monitoring**: Master/slave status and replication lag (optional)
+- **Query Cache Analysis**: Hit rates and memory usage (optional)
+- **Lock Wait Statistics**: Current lock waits and historical data
+- **Performance Schema**: Top queries and table I/O statistics
+- **Custom Alerts**: Create automations based on any metric
 
-1. Copy the `mysql_monitor` folder to your Home Assistant `custom_components` directory
-2. Restart Home Assistant
-3. Go to Configuration > Integrations > Add Integration > MySQL Monitor
-4. Enter your MySQL connection details
+## 📋 Requirements
 
-## Configuration
+- Home Assistant 2023.1 or newer
+- MySQL 5.7+ or MariaDB 10.2+ (MySQL 8.0+ recommended)
+- MySQL user with appropriate permissions
 
-### Connection Settings
-- **Host**: MySQL server hostname or IP address
-- **Port**: MySQL server port (default: 3306)
-- **Username**: MySQL username
-- **Password**: MySQL password
-- **SSL Options**: Enable SSL and configure certificates
+## 🛠️ Installation
 
-### Options
-- **Include Databases**: Comma-separated list of databases to monitor (empty = all)
-- **Exclude Databases**: Comma-separated list of databases to exclude
-- **Update Interval**: How often to fetch data (10-3600 seconds)
-- **Enable Query Cache Monitoring**: Monitor query cache metrics (optional)
-- **Enable Replication Monitoring**: Monitor replication status (optional)
+### HACS Installation (Recommended)
 
-## Security Recommendations
+1. Open HACS in your Home Assistant instance
+2. Click on "Integrations"
+3. Click the three dots in the top right corner and select "Custom repositories"
+4. Add repository URL: `https://github.com/pageskr/ha-mysql-monitor`
+5. Select category: "Integration"
+6. Click "Add"
+7. Search for "MySQL Monitor" in HACS
+8. Click "Download" and select the latest version
+9. Restart Home Assistant
 
-### Create a Read-Only User
+### Manual Installation
+
+1. Download the latest release from [GitHub Releases](https://github.com/pageskr/ha-mysql-monitor/releases)
+2. Extract the `mysql_monitor` folder to your `custom_components` directory:
+   ```
+   custom_components/
+   └── mysql_monitor/
+       ├── __init__.py
+       ├── manifest.json
+       ├── sensor.py
+       └── ...
+   ```
+3. Restart Home Assistant
+
+## ⚙️ Configuration
+
+### Step 1: Create MySQL User
+
+Create a dedicated read-only user for monitoring:
+
 ```sql
-CREATE USER 'ha_monitor'@'%' IDENTIFIED BY 'strong_password';
-GRANT SELECT, SHOW VIEW, REPLICATION CLIENT, PROCESS ON *.* TO 'ha_monitor'@'%';
-GRANT SELECT ON performance_schema.* TO 'ha_monitor'@'%';
+CREATE USER 'homeassistant'@'%' IDENTIFIED BY 'your_secure_password';
+
+-- Grant minimum required permissions
+GRANT SELECT, SHOW VIEW, REPLICATION CLIENT, PROCESS ON *.* TO 'homeassistant'@'%';
+
+-- For Performance Schema metrics (optional but recommended)
+GRANT SELECT ON performance_schema.* TO 'homeassistant'@'%';
+
+-- Apply permissions
 FLUSH PRIVILEGES;
 ```
 
-### Network Security
-- Restrict MySQL access to Home Assistant IP only
-- Use SSL/TLS for connections
-- Configure firewall rules appropriately
+**Security Note**: Replace `%` with your Home Assistant IP address for better security:
+```sql
+CREATE USER 'homeassistant'@'192.168.1.100' IDENTIFIED BY 'your_secure_password';
+```
 
-## Sensors Created
+### Step 2: Add Integration
 
-### Global Status Sensors
-- Connections (threads_connected, threads_running, connection_errors)
-- Queries (queries, questions, slow_queries, etc.)
-- InnoDB metrics (buffer pool, data I/O, row operations)
-- Cache statistics (query cache hits/misses) - optional
-- Network I/O (bytes sent/received)
-- Temporary tables and files
-- Replication metrics - optional
+1. Go to **Settings** → **Devices & Services**
+2. Click **+ ADD INTEGRATION**
+3. Search for "MySQL Monitor"
+4. Enter connection details:
+   - **Host**: MySQL server address
+   - **Port**: MySQL port (default: 3306)
+   - **Username**: MySQL username
+   - **Password**: MySQL password
+   - **SSL Options**: Configure if using SSL/TLS
 
-### System Resource Sensors
-- `sensor.mysql_cpu_usage`: Overall CPU usage
-- `sensor.mysql_memory_usage`: Overall memory usage
+### Step 3: Configure Options
+
+After setup, click **CONFIGURE** to adjust:
+
+- **Include Databases**: Comma-separated list (empty = all databases)
+  ```
+  Example: production,staging,wordpress
+  ```
+- **Exclude Databases**: Comma-separated list to exclude
+  ```
+  Example: test,temp_db
+  ```
+- **Update Interval**: Data refresh rate in seconds (10-3600)
+- **Enable Query Cache**: Monitor query cache metrics
+- **Enable Replication**: Monitor replication status
+
+## 📊 Sensors Created
+
+### System Sensors
+| Sensor | Description | Unit |
+|--------|-------------|------|
+| `sensor.mysql_server_info` | Server version and status | - |
+| `sensor.mysql_cpu_usage` | System CPU usage | % |
+| `sensor.mysql_memory_usage` | System memory usage | % |
+
+### Connection Sensors
+| Sensor | Description | Unit |
+|--------|-------------|------|
+| `sensor.mysql_threads_connected` | Currently connected threads | count |
+| `sensor.mysql_threads_running` | Currently running threads | count |
+| `sensor.mysql_max_used_connections` | Historical maximum connections | count |
+| `sensor.mysql_connections_usage` | Connection pool usage | % |
+| `sensor.mysql_connection_errors` | Total connection errors | count |
+
+### Query Performance
+| Sensor | Description | Unit |
+|--------|-------------|------|
+| `sensor.mysql_queries` | Total queries executed | count |
+| `sensor.mysql_questions` | Statements sent by clients | count |
+| `sensor.mysql_slow_query_logs` | Slow queries count | count |
+| `sensor.mysql_com_select` | SELECT statements | count |
+| `sensor.mysql_com_insert` | INSERT statements | count |
+| `sensor.mysql_com_update` | UPDATE statements | count |
+| `sensor.mysql_com_delete` | DELETE statements | count |
+
+### InnoDB Metrics
+| Sensor | Description | Unit |
+|--------|-------------|------|
+| `sensor.mysql_buffer_pool_hit_rate` | Buffer pool effectiveness | % |
+| `sensor.mysql_innodb_buffer_pool_pages_*` | Buffer pool page statistics | count |
+| `sensor.mysql_innodb_data_read` | Data read | bytes |
+| `sensor.mysql_innodb_data_written` | Data written | bytes |
+| `sensor.mysql_innodb_rows_*` | Row operations | count |
 
 ### Database Sensors (per database)
-- `sensor.mysql_db_[name]_size`: Database size in bytes
-- `sensor.mysql_db_[name]_tables`: Number of tables
-- `sensor.mysql_db_[name]_rows`: Estimated total rows
+| Sensor Pattern | Description | Unit |
+|----------------|-------------|------|
+| `sensor.mysql_db_[name]_size` | Database size | bytes |
+| `sensor.mysql_db_[name]_tables` | Number of tables | count |
+| `sensor.mysql_db_[name]_rows` | Estimated row count | count |
 
-### Performance Sensors
-- `sensor.mysql_query_cache_hit_rate`: Query cache effectiveness (optional)
-- `sensor.mysql_buffer_pool_hit_rate`: InnoDB buffer pool effectiveness
-- `sensor.mysql_connections_usage`: Connection pool usage percentage
-- `sensor.mysql_slow_queries`: Number of slow queries
-- `sensor.mysql_active_transactions`: Number of active transactions
+### Optional Sensors
+- **Query Cache**: Hit rate, memory usage (when enabled)
+- **Replication**: Master/Slave status, lag time (when enabled)
 
-## Automation Examples
+## 🔔 Automation Examples
 
-### Alert on High CPU Usage
+### High CPU Alert
 ```yaml
 automation:
   - alias: "MySQL High CPU Alert"
@@ -105,82 +183,204 @@ automation:
     action:
       - service: notify.mobile_app
         data:
-          title: "MySQL Alert"
-          message: "MySQL CPU usage is above 90%!"
+          title: "⚠️ MySQL Alert"
+          message: "MySQL server CPU usage is above 90%!"
 ```
 
-### Monitor Database Growth
+### Database Size Monitor
 ```yaml
 automation:
-  - alias: "Database Size Alert"
+  - alias: "Database Size Warning"
     trigger:
       - platform: numeric_state
-        entity_id: sensor.mysql_db_myapp_size
-        above: 10737418240  # 10GB in bytes
+        entity_id: sensor.mysql_db_production_size
+        above: 10737418240  # 10GB
     action:
       - service: notify.email
         data:
-          title: "Database Size Warning"
-          message: "MyApp database has exceeded 10GB"
+          title: "Database Size Alert"
+          message: >
+            Production database exceeded 10GB.
+            Current size: {{ (states('sensor.mysql_db_production_size')|float / 1073741824)|round(2) }}GB
 ```
 
-## Dashboard Examples
-
-### Basic Monitoring Card
+### Connection Pool Alert
 ```yaml
-type: entities
-title: MySQL Status
-entities:
-  - entity: sensor.mysql_server_info
-  - entity: sensor.mysql_connections_usage
-  - entity: sensor.mysql_cpu_usage
-  - entity: sensor.mysql_memory_usage
-  - entity: sensor.mysql_slow_queries
+automation:
+  - alias: "MySQL Connection Pool Critical"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.mysql_connections_usage
+        above: 85
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "MySQL Connection Warning"
+          message: >
+            Connection pool usage: {{ states('sensor.mysql_connections_usage') }}%
+            Active: {{ state_attr('sensor.mysql_connections_usage', 'active_connections') }}
+            Max: {{ state_attr('sensor.mysql_connections_usage', 'max_connections') }}
 ```
 
-### Database Size Graph
+## 📈 Dashboard Examples
+
+### Overview Card
+```yaml
+type: vertical-stack
+cards:
+  - type: entities
+    title: MySQL Status
+    entities:
+      - entity: sensor.mysql_server_info
+      - entity: sensor.mysql_cpu_usage
+      - entity: sensor.mysql_memory_usage
+      - entity: sensor.mysql_connections_usage
+      
+  - type: horizontal-stack
+    cards:
+      - type: gauge
+        entity: sensor.mysql_buffer_pool_hit_rate
+        name: Buffer Hit Rate
+        min: 0
+        max: 100
+        severity:
+          green: 95
+          yellow: 85
+          red: 0
+          
+      - type: gauge
+        entity: sensor.mysql_connections_usage
+        name: Connections
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 70
+          red: 85
+```
+
+### Database Growth Chart
 ```yaml
 type: history-graph
-title: Database Sizes
+title: Database Growth
 entities:
-  - entity: sensor.mysql_db_app_size
-  - entity: sensor.mysql_db_logs_size
+  - entity: sensor.mysql_db_production_size
+  - entity: sensor.mysql_db_staging_size
 hours_to_show: 168
+refresh_interval: 600
 ```
 
-## Troubleshooting
+### Performance Metrics
+```yaml
+type: custom:mini-graph-card
+title: Query Performance
+entities:
+  - entity: sensor.mysql_queries
+    name: Total Queries
+  - entity: sensor.mysql_slow_query_logs
+    name: Slow Queries
+    y_axis: secondary
+hours_to_show: 24
+points_per_hour: 4
+show:
+  labels: true
+  labels_secondary: true
+```
+
+## 🔍 Troubleshooting
 
 ### Connection Issues
-- Verify MySQL user permissions
-- Check firewall/network settings
-- Ensure MySQL is listening on the correct interface
-- Test SSL certificate paths if using SSL
 
-### Missing Metrics
-- Some metrics require specific MySQL configurations
-- Performance Schema must be enabled for advanced metrics
-- Replication metrics only appear on configured master/slave servers
+1. **Test MySQL connection**:
+   ```bash
+   mysql -h your_mysql_host -u homeassistant -p
+   ```
 
-### Performance Impact
-- Increase update interval for large deployments
-- Consider excluding large databases from detailed monitoring
-- Monitor the integration's impact on MySQL performance
+2. **Check permissions**:
+   ```sql
+   SHOW GRANTS FOR 'homeassistant'@'%';
+   ```
 
-## Requirements
+3. **Verify firewall rules** allow connection on MySQL port
 
-- Home Assistant 2023.1 or newer
-- MySQL 5.7 or newer (MySQL 8.0+ recommended)
-- Python packages: pymysql, psutil
+4. **For SSL issues**, ensure certificate paths are correct and accessible
 
-## Author
+### Missing Sensors
+
+- **Performance Schema metrics**: Ensure `performance_schema = ON` in MySQL config
+- **Replication metrics**: Only appear on configured master/slave servers
+- **Query Cache**: May be disabled in MySQL 8.0+ (deprecated feature)
+
+### High Resource Usage
+
+1. Increase update interval (60-300 seconds recommended)
+2. Exclude large or unnecessary databases
+3. Monitor integration's impact via MySQL process list
+
+## 🛡️ Security Best Practices
+
+1. **Use dedicated read-only user** - Never use root or admin accounts
+2. **Restrict access by IP** - Limit MySQL user to Home Assistant's IP
+3. **Enable SSL/TLS** - Encrypt connections between HA and MySQL
+4. **Regular password rotation** - Update credentials periodically
+5. **Monitor access logs** - Check for unauthorized access attempts
+
+## 📝 Sensor Attributes
+
+Most sensors include detailed attributes for deeper insights:
+
+### Server Info Attributes
+- Version details, uptime, configuration
+- Global variables (max_connections, buffer sizes)
+- Lock timeout settings
+
+### Connection Error Attributes
+- Breakdown by error type
+- Individual error counters
+
+### Database Sensor Attributes
+- Detailed size breakdown (data/index/free)
+- Top 5 largest tables
+- Fragmentation statistics
+
+### InnoDB Sensor Attributes
+- Lock wait statistics
+- Row lock metrics
+- Detailed buffer pool stats
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 👤 Author
 
 **Pages in Korea (pages.kr)** (@pageskr)
 
-## License
+- GitHub: [@pageskr](https://github.com/pageskr)
+- Website: [pages.kr](https://pages.kr)
 
-This integration is provided as-is for the Home Assistant community.
+## 🙏 Acknowledgments
 
-## Support
+- Home Assistant Community
+- MySQL/MariaDB developers
+- Contributors and testers
 
-For issues and feature requests, please visit:
-https://github.com/pageskr/ha-mysql-monitor/issues
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/pageskr/ha-mysql-monitor/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/pageskr/ha-mysql-monitor/discussions)
+- **Documentation**: [Wiki](https://github.com/pageskr/ha-mysql-monitor/wiki)
+
+---
+
+Made with ❤️ for the Home Assistant Community
